@@ -11,6 +11,7 @@ warnings.simplefilter("ignore", FutureWarning)
 # User inputs
 #############
 RANS_fileloc  = '.'
+#RANS_filename = 'flatplate.vtk'
 RANS_filename = 'flow.vtk'
 
 LES_fileloc  = '.'
@@ -55,7 +56,14 @@ rans_vtk.point_arrays['U'] = rans_vtk.point_arrays['roU']/np.array([rans_vtk.poi
 
 print('List of RANS data fields:\n', rans_vtk.scalar_names)
 
-
+# Remove viscous wall d=0 points to prevent division by zero in feature construction
+print('Removing viscous wall (d=0) nodes from mesh')
+rans_vtk = rans_vtk.threshold([1e-12,1e99],scalars='d')
+print('Number of nodes extracted = ', rans_nnode - rans_vtk.number_of_points)
+rans_nnode = rans_vtk.number_of_points
+rans_ncell = rans_vtk.number_of_cells
+print('New number of nodes = ', rans_nnode)
+print('New number of cells = ', rans_ncell)
 
 # Read in LES data
 ##################
@@ -111,7 +119,7 @@ q = np.empty([rans_nnode,nfeat])
 U = rans_dsa.PointData['U'] # NOTE - Getting variables from dsa obj not vtk obj as want to use algs etc later
 
 # Velocity gradient tensor and its transpose
-J  = algs.gradient(U)
+J  = algs.gradient(U)        # J[:,j-1,i-1] is dUidxj
 Jt = algs.apply_dfunc(np.transpose,J,(0,2,1))
 
 # Strain and vorticity tensors
@@ -145,16 +153,19 @@ q[:,2] = algs.apply_dfunc(np.minimum, q3, 2.0)
 
 # Feature 4: Pressure gradient along streamline
 ###############################################
+A = np.zeros(rans_nnode)
+B = np.zeros(rans_nnode)
+
 dpdx  = algs.gradient(rans_dsa.PointData['p'])
-Udpdx = algs.sum(U*dpdx,axis=1) #Same as U.dpdx
-Udpdxabs = algs.sum(algs.abs(U*dpdx),axis=1) #Same as U.dpdx
-#TODO - FIX!
-norm  = np.zeros(rans_nnode)
+
+for k in range(0,3):
+    A += U[:,k]*dpdx[:,k] 
+
 for i in range(0,3):
     for j in range(0,3):
-        norm[:] += dpdx[:,j]*dpdx[:,j]*U[:,i]*U[:,i]
-q[:,3] = Udpdx/(algs.sqrt(norm)+Udpdxabs+1e-12) #TODO - remove viscous wall boundary points so +1e-12 not required
+        B += U[:,i]*U[:,i]*dpdx[:,j]*dpdx[:,j]
 
+q[:,3] = A/(algs.sqrt(B)+algs.abs(A))
 
 
 # Feature 5: Ratio of turb time scale to mean strain time scale
@@ -171,16 +182,56 @@ q[:,5] = nu_t/(100.0*nu + nu_t)
 
 # Feature 7: Ratio of pressure normal stresses to normal shear stresses
 #######################################################################
+A = np.zeros(rans_nnode)
+B = np.zeros(rans_nnode)
+
+for i in range(0,3):
+    A += dpdx[:,i]*dpdx[:,i]
+
+for k in range(0,3):
+    B += 0.5*rans_dsa.PointData['ro']*J[:,k,k]*J[:,k,k]
+
+q[:,6] = algs.sqrt(A)/(algs.sqrt(A)+B)
 
 # Feature 8: Vortex stretching
 ##############################
-vort_vec = algs.vorticity(U)
+A = np.zeros(rans_nnode)
+B = np.zeros(rans_nnode)
+
+vortvec = algs.vorticity(U)
+
+for j in range(0,3):
+    for i in range(0,3):
+        for k in range(0,3):
+            A += vortvec[:,j]*J[:,j,i]*vortvec[:,k]*J[:,k,i]
+
+B = Snorm
+
+q[:,7] = algs.sqrt(A)/(algs.sqrt(A)+B)
+q[:,0] = vortvec[:,0]
+q[:,1] = vortvec[:,1]
+q[:,2] = vortvec[:,2]
 
 # Feature 9: Marker of Gorle et al. (deviation from parallel shear flow)
 ########################################################################
+A = np.zeros(rans_nnode)
+B = np.zeros(rans_nnode)
+
+for i in range(0,3):
+    for j in range(0,3):
+        A += U[:,i]*U[:,j]*J[:,j,i]/(UiUi)
+
+for n in range(0,3):
+    for i in range(0,3):
+        for j in range(0,3):
+            for m in range(0,3):
+                B += U[:,n]*U[:,n]*U[:,i]*J[:,j,i]*U[:,m]*J[:,j,m]
+q[:,8] = algs.abs(A)/(algs.sqrt(B)+algs.abs(A))
+
 
 # Feature 10: Ratio of convection to production of k
 ####################################################
+# TODO - Get Reynolds stresses from LEVM and CEVM
 
 # Feature 11: Ratio of total Reynolds stresses to normal Reynolds stresses
 ##########################################################################
