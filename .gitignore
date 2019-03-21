@@ -1,0 +1,6 @@
+# solution files
+*.vtk
+*.vtu
+
+# other
+.idea/
