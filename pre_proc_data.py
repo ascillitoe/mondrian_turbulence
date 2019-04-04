@@ -22,6 +22,19 @@ out_filename = 'output.vtk'
 
 plot = False
 
+# Constants
+###########
+Cmu = 0.09
+
+# Craft's CEVM constants
+C1 = -0.1
+C2 = 0.1
+C3 = 0.26
+C4 = -10.0*Cmu**2.0
+C5 = 0.0
+C6 = -5.0*Cmu**2.0
+C7 = 5.0*Cmu**2.0
+
 ##############
 # Read in data
 ##############
@@ -119,8 +132,10 @@ q = np.empty([rans_nnode,nfeat])
 U = rans_dsa.PointData['U'] # NOTE - Getting variables from dsa obj not vtk obj as want to use algs etc later
 
 # Velocity gradient tensor and its transpose
-J  = algs.gradient(U)        # J[:,j-1,i-1] is dUidxj
-Jt = algs.apply_dfunc(np.transpose,J,(0,2,1))
+# J[:,i-1,j-1] is dUidxj
+# Jt[:,i-1,j-1] is dUjdxi
+Jt = algs.gradient(U)        # Jt is this one as algs uses j,i ordering
+J  = algs.apply_dfunc(np.transpose,Jt,(0,2,1))
 
 # Strain and vorticity tensors
 Sij = 0.5*(J+Jt)
@@ -130,7 +145,7 @@ Oij = 0.5*(J-Jt)
 Snorm = algs.sum(2.0*Sij**2,axis=1) # sum i axis
 Snorm = algs.sum(     Snorm,axis=1) # sum previous summations i.e. along j axis
 Onorm = algs.sum(2.0*Oij**2,axis=1) # sum i axis
-Onorm = algs.sum(    Onorm, axis=1) # sum previous summations i.e. along j axis
+Onorm = algs.sum(     Onorm,axis=1) # sum previous summations i.e. along j axis
 
 # Store q1
 q[:,0] = (Onorm - Snorm)/(Onorm + Snorm)
@@ -141,14 +156,14 @@ Onorm = algs.sqrt(Onorm) #revert to revert to real Onorm for use later
 
 # Feature 2: Turbulence intensity
 #################################
-k = rans_dsa.PointData['k'] 
+tke = rans_dsa.PointData['k'] 
 UiUi = algs.mag(U)**2.0
-q[:,1] = k/(0.5*UiUi+k)
+q[:,1] = tke/(0.5*UiUi+tke)
 
 # Feature 3: Turbulence Reynolds number
 #######################################
 nu = rans_dsa.PointData['mu_l']/rans_dsa.PointData['ro']
-q3 = (algs.sqrt(k)*rans_dsa.PointData['d'])/(50.0*nu)
+q3 = (algs.sqrt(tke)*rans_dsa.PointData['d'])/(50.0*nu)
 q[:,2] = algs.apply_dfunc(np.minimum, q3, 2.0)
 
 # Feature 4: Pressure gradient along streamline
@@ -170,10 +185,9 @@ q[:,3] = A/(algs.sqrt(B)+algs.abs(A))
 
 # Feature 5: Ratio of turb time scale to mean strain time scale
 ###############################################################
-eps = k*rans_dsa.PointData['w']
-#bstar = 0.09 #TODO - which version for SU2. TODO - Option to select omega definition for user
-#eps = bstar*k*rans_dsa.PointData['w']
-q[:,4] = Snorm*k/(Snorm*k + eps)
+A = 1.0/rans_dsa.PointData['w']  #Turbulent time scale (eps = k*w therefore also A = k/eps)
+B = 1.0/Snorm
+q[:,4] = A/(A+B)
 
 # Feature 6: Viscosity ratio
 ############################
@@ -191,7 +205,15 @@ for i in range(0,3):
 for k in range(0,3):
     B += 0.5*rans_dsa.PointData['ro']*J[:,k,k]*J[:,k,k]
 
+#TODO - revisit this. Units don't line up with Ling's q7 definition.
+#       Look at balance between shear stress and pressure grad in poisuille flow? 
+#       Derive ratio from there? Surely must include viscosity in equation, and maybe d2u/dx2?
+#du2dx = algs.gradient(U**2.0) 
+#for k in range(0,3):
+#    B += 0.5*rans_dsa.PointData['ro']*du2dx[:,k,k]*du2dx[:,k,k]
+
 q[:,6] = algs.sqrt(A)/(algs.sqrt(A)+B)
+#q[:,6] = algs.sqrt(A)/(algs.sqrt(A)+algs.abs(B))
 
 # Feature 8: Vortex stretching
 ##############################
@@ -203,14 +225,11 @@ vortvec = algs.vorticity(U)
 for j in range(0,3):
     for i in range(0,3):
         for k in range(0,3):
-            A += vortvec[:,j]*J[:,j,i]*vortvec[:,k]*J[:,k,i]
+            A += vortvec[:,j]*J[:,i,j]*vortvec[:,k]*J[:,i,k]
 
 B = Snorm
 
 q[:,7] = algs.sqrt(A)/(algs.sqrt(A)+B)
-q[:,0] = vortvec[:,0]
-q[:,1] = vortvec[:,1]
-q[:,2] = vortvec[:,2]
 
 # Feature 9: Marker of Gorle et al. (deviation from parallel shear flow)
 ########################################################################
@@ -219,25 +238,133 @@ B = np.zeros(rans_nnode)
 
 for i in range(0,3):
     for j in range(0,3):
-        A += U[:,i]*U[:,j]*J[:,j,i]/(UiUi)
+        A += U[:,i]*U[:,j]*J[:,i,j]
 
 for n in range(0,3):
     for i in range(0,3):
         for j in range(0,3):
             for m in range(0,3):
-                B += U[:,n]*U[:,n]*U[:,i]*J[:,j,i]*U[:,m]*J[:,j,m]
+                B += U[:,n]*U[:,n]*U[:,i]*J[:,i,j]*U[:,m]*J[:,m,j]
 q[:,8] = algs.abs(A)/(algs.sqrt(B)+algs.abs(A))
-
 
 # Feature 10: Ratio of convection to production of k
 ####################################################
-# TODO - Get Reynolds stresses from LEVM and CEVM
+delij = np.zeros_like(Sij)
+for i in range(0,3): 
+    delij[:,i,i] = 1.0
+uiuj = (2.0/3.0)*tke*delij - 2.0*nu_t*Sij
+
+dkdx  = algs.gradient(tke)
+
+A = np.zeros(rans_nnode)
+B = np.zeros(rans_nnode)
+
+for i in range(0,3):
+    A += U[:,i]*dkdx[:,i] 
+
+for j in range(0,3):
+    for l in range(0,3):
+        B += uiuj[:,j,l]*Sij[:,j,l]
+
+q[:,9] = A/(algs.abs(B)+algs.abs(A))
 
 # Feature 11: Ratio of total Reynolds stresses to normal Reynolds stresses
 ##########################################################################
+# Frob. norm of uiuj
+A = algs.sum(uiuj**2,axis=1) # sum i axis
+A = algs.sum(      A,axis=1) # sum previous summations i.e. along j axis
+A = algs.sqrt(A)
+
+B = tke
+
+q[:,10] = A/(B + A)
 
 # Feature 12: Cubic eddy viscosity comparision
 ##############################################
+# Craft's CEVM uiuj
+# C1 term
+temp1  = np.zeros_like(uiuj)
+temp2  = np.zeros_like(uiuj)
+C1term = np.zeros_like(uiuj)
+for i in range(0,3):
+    for j in range(0,3):
+        for k in range(0,3):
+            temp1[:,i,j] += Sij[:,i,j]*Sij[:,i,k]*Sij[:,j,k]
+            for l in range(0,3):
+                temp2[:,i,j] += Sij[:,i,j]*delij[:,i,j]*Sij[:,k,l]*Sij[:,k,l]
+C1term = 4.0*C1*nu_t**2.0*(temp1 - temp2/3.0)/(Cmu*tke)
+
+# C2 term
+temp1  = np.zeros_like(uiuj)
+temp2  = np.zeros_like(uiuj)
+C2term = np.zeros_like(uiuj)
+for i in range(0,3):
+    for j in range(0,3):
+        for k in range(0,3):
+            temp1[:,i,j] += Sij[:,i,j]*Oij[:,i,k]*Sij[:,k,j]
+            temp2[:,i,j] += Sij[:,i,j]*Oij[:,j,k]*Sij[:,k,i]
+C2term = 4.0*C2*nu_t**2.0*(temp1 + temp2)/(Cmu*tke)
+
+# C3 term
+temp1  = np.zeros_like(uiuj)
+temp2  = np.zeros_like(uiuj)
+C3term = np.zeros_like(uiuj)
+for i in range(0,3):
+    for j in range(0,3):
+        for k in range(0,3):
+            temp1[:,i,j] += Sij[:,i,j]*Oij[:,i,k]*Oij[:,j,k]
+            for l in range(0,3):
+                temp2[:,i,j] += Oij[:,l,k]*Oij[:,l,k]*Sij[:,i,j]*delij[:,i,j]
+C3term = 4.0*C3*nu_t**2.0*(temp1 - temp2/3.0)/(Cmu*tke)
+
+# C4 term
+temp1  = np.zeros_like(uiuj)
+temp2  = np.zeros_like(uiuj)
+C4term = np.zeros_like(uiuj)
+for i in range(0,3):
+    for j in range(0,3):
+        for k in range(0,3):
+            for l in range(0,3):
+                temp1[:,i,j] += Sij[:,i,j]*Sij[:,k,l]*Sij[:,k,i]*Oij[:,l,j]
+                temp2[:,i,j] += Sij[:,i,j]*Sij[:,k,j]*Oij[:,l,i]*Sij[:,k,l]
+C4term = 8.0*C4*nu_t**3.0*(temp1 + temp2)/(Cmu**2.0*tke**2.0)
+
+# C5 term 
+# No need as C5=0
+
+# C6 term
+temp1  = np.zeros_like(uiuj)
+C6term = np.zeros_like(uiuj)
+for i in range(0,3):
+    for j in range(0,3):
+        for k in range(0,3):
+            for l in range(0,3):
+                temp1[:,i,j] += Sij[:,i,j]*Sij[:,i,j]*Sij[:,k,l]*Sij[:,k,l]
+C6term = 8.0*C6*nu_t**3.0*temp1/(Cmu**2.0*tke**2.0)
+
+# C7 term
+temp1  = np.zeros_like(uiuj)
+C7term = np.zeros_like(uiuj)
+for i in range(0,3):
+    for j in range(0,3):
+        for k in range(0,3):
+            for l in range(0,3):
+                temp1[:,i,j] += Sij[:,i,j]*Sij[:,i,j]*Oij[:,k,l]*Oij[:,k,l]
+C7term = 8.0*C7*nu_t**3.0*temp1/(Cmu**2.0*tke**2.0)
+
+# Add cubic terms to linear evm
+cevm = C1term + C2term + C3term + C4term + C6term + C7term 
+uiujcevmSij = uiuj*Sij + cevm
+
+A = np.zeros(rans_nnode)
+B = np.zeros(rans_nnode)
+
+for i in range(0,3):
+    for j in range(0,3):
+        A += uiujcevmSij[:,i,j] - uiuj[:,i,j]*Sij[:,i,j]
+        B += uiuj[:,i,j]*Sij[:,i,j]
+
+q[:,11] = A / (algs.abs(A) + algs.abs(B))
 
 # Store features in vtk obj
 ###########################
