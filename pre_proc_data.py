@@ -5,9 +5,10 @@ from vtk.numpy_interface import dataset_adapter as dsa
 from vtk.numpy_interface import algorithms as algs
 import vtki
 import warnings
+from internal_funcs import *
 
 warnings.simplefilter("ignore", FutureWarning)
- 
+
 # User inputs
 #############
 RANS_fileloc  = '.'
@@ -17,25 +18,12 @@ LES_fileloc  = '.'
 LES_filename = 'les_h20.vtu'
 
 out_fileloc  = '.'
-feat_filename = 'feat.vtk'
+feat_filename = 'feat2.vtk'
 err_filename  = 'err.vtk'
 
 plot = False
 solver = 'incomp'
 #solver = 'comp'
-
-# Constants
-###########
-Cmu = 0.09
-
-# Craft's CEVM constants
-C1 = -0.1
-C2 = 0.1
-C3 = 0.26
-C4 = -10.0*Cmu**2.0
-C5 = 0.0
-C6 = -5.0*Cmu**2.0
-C7 = 5.0*Cmu**2.0
 
 ##############
 # Read in data
@@ -315,80 +303,10 @@ q[:,10] = A/(B + A)
 # Feature 12: Cubic eddy viscosity comparision
 ##############################################
 print('12: Cubic eddy viscosity comparision')
-# Craft's CEVM uiuj
-# C1 term
-temp1  = np.zeros_like(uiuj)
-temp2  = np.zeros_like(uiuj)
-C1term = np.zeros_like(uiuj)
-for i in range(0,3):
-    for j in range(0,3):
-        for k in range(0,3):
-            temp1[:,i,j] += Sij[:,i,j]*Sij[:,i,k]*Sij[:,j,k]
-            for l in range(0,3):
-                temp2[:,i,j] += Sij[:,i,j]*delij[:,i,j]*Sij[:,k,l]*Sij[:,k,l]
-C1term = 4.0*C1*nu_t**2.0*(temp1 - temp2/3.0)/(Cmu*tke)
 
-# C2 term
-temp1  = np.zeros_like(uiuj)
-temp2  = np.zeros_like(uiuj)
-C2term = np.zeros_like(uiuj)
-for i in range(0,3):
-    for j in range(0,3):
-        for k in range(0,3):
-            temp1[:,i,j] += Sij[:,i,j]*Oij[:,i,k]*Sij[:,k,j]
-            temp2[:,i,j] += Sij[:,i,j]*Oij[:,j,k]*Sij[:,k,i]
-C2term = 4.0*C2*nu_t**2.0*(temp1 + temp2)/(Cmu*tke)
-
-# C3 term
-temp1  = np.zeros_like(uiuj)
-temp2  = np.zeros_like(uiuj)
-C3term = np.zeros_like(uiuj)
-for i in range(0,3):
-    for j in range(0,3):
-        for k in range(0,3):
-            temp1[:,i,j] += Sij[:,i,j]*Oij[:,i,k]*Oij[:,j,k]
-            for l in range(0,3):
-                temp2[:,i,j] += Oij[:,l,k]*Oij[:,l,k]*Sij[:,i,j]*delij[:,i,j]
-C3term = 4.0*C3*nu_t**2.0*(temp1 - temp2/3.0)/(Cmu*tke)
-
-# C4 term
-temp1  = np.zeros_like(uiuj)
-temp2  = np.zeros_like(uiuj)
-C4term = np.zeros_like(uiuj)
-for i in range(0,3):
-    for j in range(0,3):
-        for k in range(0,3):
-            for l in range(0,3):
-                temp1[:,i,j] += Sij[:,i,j]*Sij[:,k,l]*Sij[:,k,i]*Oij[:,l,j]
-                temp2[:,i,j] += Sij[:,i,j]*Sij[:,k,j]*Oij[:,l,i]*Sij[:,k,l]
-C4term = 8.0*C4*nu_t**3.0*(temp1 + temp2)/(Cmu**2.0*tke**2.0)
-
-# C5 term 
-# No need as C5=0
-
-# C6 term
-temp1  = np.zeros_like(uiuj)
-C6term = np.zeros_like(uiuj)
-for i in range(0,3):
-    for j in range(0,3):
-        for k in range(0,3):
-            for l in range(0,3):
-                temp1[:,i,j] += Sij[:,i,j]*Sij[:,i,j]*Sij[:,k,l]*Sij[:,k,l]
-C6term = 8.0*C6*nu_t**3.0*temp1/(Cmu**2.0*tke**2.0)
-
-# C7 term
-temp1  = np.zeros_like(uiuj)
-C7term = np.zeros_like(uiuj)
-for i in range(0,3):
-    for j in range(0,3):
-        for k in range(0,3):
-            for l in range(0,3):
-                temp1[:,i,j] += Sij[:,i,j]*Sij[:,i,j]*Oij[:,k,l]*Oij[:,k,l]
-C7term = 8.0*C7*nu_t**3.0*temp1/(Cmu**2.0*tke**2.0)
-
-# Add cubic terms to linear evm
-cevm = C1term + C2term + C3term + C4term + C6term + C7term 
-uiujcevmSij = uiuj*Sij + cevm
+# Add quadratic and cubic terms to linear evm
+cevm_2nd, cevm_3rd = build_cevm(Sij,Oij)
+uiujcevmSij = uiuj*Sij + (cevm_2nd/tke)*nu_t**2.0 + (cevm_3rd/tke**2.0)*nu_t**3.0
 
 A = np.zeros(rans_nnode)
 B = np.zeros(rans_nnode)
@@ -495,6 +413,18 @@ print('\tMean = ', algs.mean(e_bool[:,1]))
 # Error metric 3: Non-linearity
 ###############################
 print('3: Non-linearity')
+
+# Build cevm equation in form A*nut**3 + B*nut**2 + C*nut + D = 0
+B, A = build_cevm(Sij,Oij)
+B = B/tke
+A = A/tke**2.0
+
+C = np.zeros_like(A)
+D = np.zeros_like(A)
+for i in range(0,3):
+    for j in range(0,3):
+        C += -2.0*Sij[:,i,j]*Sij[:,i,j]
+        D += (2.0/3.0)*tke*Sij[:,i,j]*delij[:,i,j] - uiuj[:,i,j]*Sij[:,i,j]
 
 
 print('\tMean = ', algs.mean(e_bool[:,2]))
