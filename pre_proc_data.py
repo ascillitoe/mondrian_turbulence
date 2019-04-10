@@ -18,7 +18,7 @@ LES_fileloc  = '.'
 LES_filename = 'les_h20.vtu'
 
 out_fileloc  = '.'
-feat_filename = 'feat2.vtk'
+feat_filename = 'feat.vtk'
 err_filename  = 'err.vtk'
 
 plot = False
@@ -306,17 +306,15 @@ print('12: Cubic eddy viscosity comparision')
 
 # Add quadratic and cubic terms to linear evm
 cevm_2nd, cevm_3rd = build_cevm(Sij,Oij)
-uiujcevmSij = uiuj*Sij + (cevm_2nd/tke)*nu_t**2.0 + (cevm_3rd/tke**2.0)*nu_t**3.0
 
-A = np.zeros(rans_nnode)
-B = np.zeros(rans_nnode)
-
+uiujSij = np.zeros(rans_nnode)
 for i in range(0,3):
     for j in range(0,3):
-        A += uiujcevmSij[:,i,j] - uiuj[:,i,j]*Sij[:,i,j]
-        B += uiuj[:,i,j]*Sij[:,i,j]
+        uiujSij += uiuj[:,i,j]*Sij[:,i,j]
 
-q[:,11] = A / (algs.abs(A) + algs.abs(B))
+uiujcevmSij = uiujSij + (cevm_2nd/tke)*nu_t**2.0 + (cevm_3rd/tke**2.0)*nu_t**3.0
+
+q[:,11] = (uiujcevmSij-uiujSij) / (uiujcevmSij+uiujSij)
 
 # Store features in vtk obj
 ###########################
@@ -376,10 +374,10 @@ for i in range(0,3):
         A += -uiuj[:,i,j]*Sij[:,i,j] + (2.0/3.0)*tke*delij[:,i,j]*Sij[:,i,j]
         B += 2.0*Sij[:,i,j]*Sij[:,i,j]
 
-nut = A/(B+1e-12)
-e_raw[:,0] = nut
+nu_t = A/(B+1e-12)
+e_raw[:,0] = nu_t
 
-index = algs.where(nut<0.0)
+index = algs.where(nu_t<0.0)
 e_bool[index,0] = 1
 
 print('\tMean = ', algs.mean(e_bool[:,0]))
@@ -416,8 +414,8 @@ print('3: Non-linearity')
 
 # Build cevm equation in form A*nut**3 + B*nut**2 + C*nut + D = 0
 B, A = build_cevm(Sij,Oij)
-B = B/tke
-A = A/tke**2.0
+B = B/(tke      +1e-12)
+A = A/(tke**2.0 +1e-12)
 
 C = np.zeros_like(A)
 D = np.zeros_like(A)
@@ -426,6 +424,23 @@ for i in range(0,3):
         C += -2.0*Sij[:,i,j]*Sij[:,i,j]
         D += (2.0/3.0)*tke*Sij[:,i,j]*delij[:,i,j] - uiuj[:,i,j]*Sij[:,i,j]
 
+nu_t_cevm = np.empty_like(nu_t)
+for i in range(0,les_nnode):
+    # Find the roots of the cubic equation (i.e. potential values for nu_t_cevm)
+    roots = np.roots([A[i],B[i],C[i],D[i]])
+    roots_orig = roots
+
+    # Remove complex solutions (with imaginary part > a small number, to allow for numerical error)
+    #roots = roots.real[abs(roots.imag)<1e-5]  #NOTE - Matches nu_t much better without this?!
+
+    # Out of remaining solutions(s), pick one that is closest to linear nu_t
+    nu_t_cevm[i] = roots.real[np.argmin( np.abs(roots - np.full(roots.size,nu_t[i])) )]
+
+normdiff = algs.abs(nu_t_cevm - nu_t) / (algs.abs(nu_t_cevm) + algs.abs(nu_t) + 1e-12)
+e_raw[:,2] = nu_t_cevm
+
+index = algs.where(normdiff>0.15)
+e_bool[index,2] = 1
 
 print('\tMean = ', algs.mean(e_bool[:,2]))
 
