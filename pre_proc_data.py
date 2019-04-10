@@ -25,6 +25,9 @@ plot = False
 solver = 'incomp'
 #solver = 'comp'
 
+xclip_min = [-0.1,0,-99]
+xclip_max = [0.506,0.142082,99]
+
 ##############
 # Read in data
 ##############
@@ -75,6 +78,18 @@ print('List of RANS data fields:\n', rans_vtk.scalar_names)
 print('Removing viscous wall (d=0) nodes from mesh')
 rans_vtk = rans_vtk.threshold([1e-12,1e99],scalars='d')
 print('Number of nodes extracted = ', rans_nnode - rans_vtk.number_of_points)
+rans_nnode = rans_vtk.number_of_points
+
+# Clip mesh to given ranges
+print('Clipping mesh to range: ', xclip_min, ' to ', xclip_max)
+rans_vtk = rans_vtk.clip(normal='x', origin=xclip_min,invert=False)
+rans_vtk = rans_vtk.clip(normal='x', origin=xclip_max,invert=True )
+rans_vtk = rans_vtk.clip(normal='y', origin=xclip_min,invert=False)
+rans_vtk = rans_vtk.clip(normal='y', origin=xclip_max,invert=True )
+rans_vtk = rans_vtk.clip(normal='z', origin=xclip_min,invert=False)
+rans_vtk = rans_vtk.clip(normal='z', origin=xclip_max,invert=True )
+print('Number of nodes clipped = ', rans_nnode - rans_vtk.number_of_points)
+
 rans_nnode = rans_vtk.number_of_points
 rans_ncell = rans_vtk.number_of_cells
 print('New number of nodes = ', rans_nnode)
