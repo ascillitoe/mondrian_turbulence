@@ -1,12 +1,15 @@
-import numpy as np
 import os
-from vtk import *
+
+import numpy as np
+import pandas as pd
+
 from vtk.numpy_interface import dataset_adapter as dsa
 from vtk.numpy_interface import algorithms as algs
 import vtki
-import warnings
+
 from internal_funcs import *
 
+import warnings
 warnings.simplefilter("ignore", FutureWarning)
 
 # User inputs
@@ -17,9 +20,9 @@ RANS_filename = 'rans_h20.vtk'
 LES_fileloc  = '.'
 LES_filename = 'les_h20.vtu'
 
-out_fileloc  = '.'
-feat_filename = 'feat.vtk'
-err_filename  = 'err.vtk'
+debug_fileloc  = '.'
+data_fileloc   = '.'
+casename = 'test'
 
 plot = False
 solver = 'incomp'
@@ -149,7 +152,9 @@ print('\nProcessing RANS data into features')
 print(  '----------------------------------')
 print('Feature:')
 nfeat = 12
+feat = 0
 q = np.empty([rans_nnode,nfeat])
+feature_labels = np.empty(nfeat, dtype='object')
 
 # Feature 1: non-dim Q-criterion
 ################################
@@ -174,7 +179,9 @@ Onorm = algs.sum(2.0*Oij**2,axis=1) # sum i axis
 Onorm = algs.sum(     Onorm,axis=1) # sum previous summations i.e. along j axis
 
 # Store q1
-q[:,0] = (Onorm - Snorm)/(Onorm + Snorm)
+q[:,feat] = (Onorm - Snorm)/(Onorm + Snorm)
+feature_labels[feat] = 'Q-Criterion'
+feat += 1
 
 # clean up 
 Snorm = algs.sqrt(Snorm) #revert to revert to real Snorm for use later
@@ -185,14 +192,18 @@ Onorm = algs.sqrt(Onorm) #revert to revert to real Onorm for use later
 print('2: Turbulence intensity')
 tke = rans_dsa.PointData['k'] 
 UiUi = algs.mag(U)**2.0
-q[:,1] = tke/(0.5*UiUi+tke)
+q[:,feat] = tke/(0.5*UiUi+tke)
+feature_labels[feat] = 'Turbulence intensity'
+feat += 1
 
 # Feature 3: Turbulence Reynolds number
 #######################################
 print('3: Turbulence Reynolds number')
 nu = rans_dsa.PointData['mu_l']/rans_dsa.PointData['ro']
 q3 = (algs.sqrt(tke)*rans_dsa.PointData['d'])/(50.0*nu)
-q[:,2] = algs.apply_dfunc(np.minimum, q3, 2.0)
+q[:,feat] = algs.apply_dfunc(np.minimum, q3, 2.0)
+feature_labels[feat] = 'Turbulence Re'
+feat += 1
 
 # Feature 4: Pressure gradient along streamline
 ###############################################
@@ -209,21 +220,26 @@ for i in range(0,3):
     for j in range(0,3):
         B += U[:,i]*U[:,i]*dpdx[:,j]*dpdx[:,j]
 
-q[:,3] = A/(algs.sqrt(B)+algs.abs(A))
-
+q[:,feat] = A/(algs.sqrt(B)+algs.abs(A))
+feature_labels[feat] = 'Pgrad along streamline'
+feat += 1
 
 # Feature 5: Ratio of turb time scale to mean strain time scale
 ###############################################################
 print('5: Ratio of turb time scale to mean strain time scale')
 A = 1.0/rans_dsa.PointData['w']  #Turbulent time scale (eps = k*w therefore also A = k/eps)
 B = 1.0/Snorm
-q[:,4] = A/(A+B)
+q[:,feat] = A/(A+B)
+feature_labels[feat] = 'turb/strain time-scale'
+feat += 1
 
 # Feature 6: Viscosity ratio
 ############################
 print('6: Viscosity ratio')
 nu_t = rans_dsa.PointData['mu_t']/rans_dsa.PointData['ro']
-q[:,5] = nu_t/(100.0*nu + nu_t)
+q[:,feat] = nu_t/(100.0*nu + nu_t)
+feature_labels[feat] = 'Viscosity ratio'
+feat += 1
 
 # Feature 7: Ratio of pressure normal stresses to normal shear stresses
 #######################################################################
@@ -244,8 +260,10 @@ for k in range(0,3):
 #for k in range(0,3):
 #    B += 0.5*rans_dsa.PointData['ro']*du2dx[:,k,k]*du2dx[:,k,k]
 
-q[:,6] = algs.sqrt(A)/(algs.sqrt(A)+B)
+q[:,feat] = algs.sqrt(A)/(algs.sqrt(A)+B)
 #q[:,6] = algs.sqrt(A)/(algs.sqrt(A)+algs.abs(B))
+feature_labels[feat] = 'Pressure/shear stresses'
+feat += 1
 
 # Feature 8: Vortex stretching
 ##############################
@@ -262,7 +280,9 @@ for j in range(0,3):
 
 B = Snorm
 
-q[:,7] = algs.sqrt(A)/(algs.sqrt(A)+B)
+q[:,feat] = algs.sqrt(A)/(algs.sqrt(A)+B)
+feature_labels[feat] = 'Vortex stretching'
+feat += 1
 
 # Feature 9: Marker of Gorle et al. (deviation from parallel shear flow)
 ########################################################################
@@ -279,7 +299,9 @@ for n in range(0,3):
         for j in range(0,3):
             for m in range(0,3):
                 B += U[:,n]*U[:,n]*U[:,i]*J[:,i,j]*U[:,m]*J[:,m,j]
-q[:,8] = algs.abs(A)/(algs.sqrt(B)+algs.abs(A))
+q[:,feat] = algs.abs(A)/(algs.sqrt(B)+algs.abs(A))
+feature_labels[feat] = 'Deviation from parallel shear'
+feat += 1
 
 # Feature 10: Ratio of convection to production of k
 ####################################################
@@ -301,7 +323,9 @@ for j in range(0,3):
     for l in range(0,3):
         B += uiuj[:,j,l]*Sij[:,j,l]
 
-q[:,9] = A/(algs.abs(B)+algs.abs(A))
+q[:,feat] = A/(algs.abs(B)+algs.abs(A))
+feature_labels[feat] = 'Convection/production of k'
+feat += 1
 
 # Feature 11: Ratio of total Reynolds stresses to normal Reynolds stresses
 ##########################################################################
@@ -313,7 +337,9 @@ A = algs.sqrt(A)
 
 B = tke
 
-q[:,10] = A/(B + A)
+q[:,feat] = A/(B + A)
+feature_labels[feat] = 'total/normal stresses'
+feat += 1
 
 # Feature 12: Cubic eddy viscosity comparision
 ##############################################
@@ -329,16 +355,13 @@ for i in range(0,3):
 
 uiujcevmSij = uiujSij + (cevm_2nd/tke)*nu_t**2.0 + (cevm_3rd/tke**2.0)*nu_t**3.0
 
-q[:,11] = (uiujcevmSij-uiujSij) / (uiujcevmSij+uiujSij)
+q[:,feat] = (uiujcevmSij-uiujSij) / (uiujcevmSij+uiujSij)
+feature_labels[feat] = 'CEV comparison'
+feat += 1
 
 # Store features in vtk obj
 ###########################
 rans_vtk.point_arrays['q'] = q
-
-# Write to vtk file
-###################
-filename = os.path.join(out_fileloc, feat_filename)
-rans_vtk.save(filename)
 
 ############################
 # Generate LES error metrics
@@ -346,9 +369,11 @@ rans_vtk.save(filename)
 print('\nProcessing LES data into error metrics')
 print(  '--------------------------------------')
 print('Error metric:')
-nerror = 3
-e_raw  = np.zeros([rans_nnode,nerror])
-e_bool = np.zeros([rans_nnode,nerror],dtype=int)
+nerr = 3
+err = 0
+e_raw  = np.zeros([rans_nnode,nerr])
+e_bool = np.zeros([rans_nnode,nerr],dtype=int)
+error_labels = np.empty(nerr, dtype='object')
 
 # Copy Reynolds stresses to tensor
 uiuj = np.zeros([les_nnode,3,3])
@@ -390,12 +415,12 @@ for i in range(0,3):
         B += 2.0*Sij[:,i,j]*Sij[:,i,j]
 
 nu_t = A/(B+1e-12)
-e_raw[:,0] = nu_t
+e_raw[:,err] = nu_t
 
 index = algs.where(nu_t<0.0)
-e_bool[index,0] = 1
-
-print('\tMean = ', algs.mean(e_bool[:,0]))
+e_bool[index,err] = 1
+error_labels[err] = 'Negative eddy viscosity'
+err += 1
 
 # Error metric 2: Reynolds stress aniostropy
 ############################################
@@ -415,13 +440,13 @@ for i in range(0,3):
             inv3 += aij[:,i,j]*aij[:,i,n]*aij[:,j,n]
 
 #e_raw[:,1] = inv2
-e_raw[:,1] = inv3
+e_raw[:,err] = inv3
 
 #index = algs.where(inv2>1.0/6.0)   #TODO - study what is best to use here. inv2, inv3, c1c etc... 
 index = algs.where(algs.abs(inv3)>0.01)
-e_bool[index,1] = 1
-
-print('\tMean = ', algs.mean(e_bool[:,1]))
+e_bool[index,err] = 1
+error_labels[err] = 'Stress anisotropy'
+err += 1
 
 # Error metric 3: Non-linearity
 ###############################
@@ -452,23 +477,62 @@ for i in range(0,les_nnode):
     nu_t_cevm[i] = roots.real[np.argmin( np.abs(roots - np.full(roots.size,nu_t[i])) )]
 
 normdiff = algs.abs(nu_t_cevm - nu_t) / (algs.abs(nu_t_cevm) + algs.abs(nu_t) + 1e-12)
-e_raw[:,2] = nu_t_cevm
+e_raw[:,err] = nu_t_cevm
 
 index = algs.where(normdiff>0.15)
-e_bool[index,2] = 1
-
-print('\tMean = ', algs.mean(e_bool[:,2]))
-
+e_bool[index,err] = 1
+error_labels[err] = 'Non-linearity'
+err += 1
 
 # Store errors in vtk obj
 ###########################
 les_vtk.point_arrays['raw'] = e_raw
 les_vtk.point_arrays['boolean'] = e_bool
 
-# Write to vtk file
-###################
-filename = os.path.join(out_fileloc, err_filename)
+# Write to vtk files
+####################
+print('\nWriting data to vtk files')
+print(  '-------------------------')
+filename = casename + '_feat.vtk'
+filename = os.path.join(debug_fileloc, filename)
+print('Writing to features to ', filename)
+rans_vtk.save(filename)
+
+filename = casename + '_err.vtk'
+filename = os.path.join(debug_fileloc, filename)
+print('Writing errors to ', filename)
 les_vtk.save(filename)
+
+# Store features and targets (error metrics) in pandas dataframe, then save to disk #TODO - option to keep in memory when this script used as a function
+print('\nConvert data to pandas dataframes')
+print(  '---------------------------------')
+
+# Put features in pandas dataframe and report stats
+dataset = pd.DataFrame(q, columns=feature_labels)
+feat_descript = dataset.describe()
+print('\nStatistics of features:' )
+print(feat_descript)
+filename = casename + '_feature_stats.csv'
+filename = os.path.join(debug_fileloc, filename)
+print('Writing feature stats to ', filename)
+feat_descript.to_csv(filename)
+
+# Put errors in pandas dataframe and report stats
+temp_dataset = pd.DataFrame(e_bool, columns=error_labels)
+err_descript = temp_dataset.describe()
+print('\nStatistics of errors:')
+print(err_descript)
+filename = casename + 'error_stats.csv' 
+filename = os.path.join(debug_fileloc, filename)
+print('Writing error stats to ', filename)
+err_descript.to_csv(filename)
+
+# Combining dataframes into one and writing to file
+dataset = pd.concat([dataset, temp_dataset], axis=1)
+filename = casename + '_dataset.csv'
+filename = os.path.join(data_fileloc, filename)
+print('\nWriting final pandas data to ', filename)
+dataset.to_csv(filename)
 
 print('\n-----------------------')
 print('Finished pre-processing')
