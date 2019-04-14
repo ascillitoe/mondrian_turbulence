@@ -7,7 +7,7 @@ from vtk.numpy_interface import dataset_adapter as dsa
 from vtk.numpy_interface import algorithms as algs
 import vtki
 
-from internal_funcs import *
+from preproc_funcs import *
 
 import warnings
 warnings.simplefilter("ignore", FutureWarning)
@@ -522,7 +522,7 @@ temp_dataset = pd.DataFrame(e_bool, columns=error_labels)
 err_descript = temp_dataset.describe()
 print('\nStatistics of errors:')
 print(err_descript)
-filename = casename + 'error_stats.csv' 
+filename = casename + '_error_stats.csv' 
 filename = os.path.join(debug_fileloc, filename)
 print('Writing error stats to ', filename)
 err_descript.to_csv(filename)
@@ -532,7 +532,7 @@ dataset = pd.concat([dataset, temp_dataset], axis=1)
 filename = casename + '_dataset.csv'
 filename = os.path.join(data_fileloc, filename)
 print('\nWriting final pandas data to ', filename)
-dataset.to_csv(filename)
+dataset.to_csv(filename,index=False)
 
 print('\n-----------------------')
 print('Finished pre-processing')
