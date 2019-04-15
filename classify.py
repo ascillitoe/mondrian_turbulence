@@ -46,7 +46,7 @@ def print_cm(cm, labels, hide_zeroes=False, hide_diagonal=False, hide_threshold=
 casename = 'test'
 data_fileloc = '.'
 nX = 12
-nY = 3
+nY = 1#3 TODO
 
 train_percentage = 0.75
 n_estimators = 10
@@ -81,14 +81,14 @@ X_train, X_test, Y_train, Y_test = train_test_split(dataset[X_headers], dataset[
 print('Number of observations for training data = ', X_train.shape[0])
 print('Number of observations for test data = ',  X_test.shape[0])
 
-# Scale features NOTE - is this needed? Or is orig non-dim enough?
-# Feature Scaling
-print('\nScaling features')
-scaler = StandardScaler()
-X_train = scaler.fit_transform(X_train)
-X_test  = scaler.transform(X_test)
-X_train = pd.DataFrame(X_train,columns=X_headers)
-X_test  = pd.DataFrame( X_test,columns=X_headers)
+## Scale features NOTE - is this needed? Or is orig non-dim enough?
+## Feature Scaling
+#print('\nScaling features')
+#scaler = StandardScaler()
+#X_train = scaler.fit_transform(X_train)
+#X_test  = scaler.transform(X_test)
+#X_train = pd.DataFrame(X_train,columns=X_headers)
+#X_test  = pd.DataFrame( X_test,columns=X_headers)
 
 # Fitting Random Forest Classification to the Training set
 print('\nTraining Random Forest classifier on test data...')
@@ -122,9 +122,13 @@ for label in Y_headers:
     i += 1
 
 # Plot precision-recall curve
+print('\nPlotting precision-recall score')
 Y_score = clf.predict_proba(X_test)
 for l in range(0,nY):
-    precision, recall, thresholds = precision_recall_curve(Y_test[Y_headers[l]], Y_score[l][:,1])
+    if (nY>1):
+        precision, recall, thresholds = precision_recall_curve(Y_test[Y_headers[l]], Y_score[l][:,1])
+    else:
+        precision, recall, thresholds = precision_recall_curve(Y_test[Y_headers[l]], Y_score[:,1])
     plt.step(recall, precision, alpha=0.5,where='post',label=Y_headers[l])
 
 plt.xlabel('Recall')
@@ -133,5 +137,59 @@ plt.ylim([0.0, 1.05])
 plt.xlim([0.0, 1.0])
 plt.title('Precision-Recall curves')
 plt.legend()
+
+# Calculate feature importances #TODO - how to pick out label from clf to print feature importances and pdp's for specified label
+print('\nCalculating feature importance with eli5')
+from eli5 import explain_weights, format_as_text
+from eli5.sklearn import PermutationImportance
+perm = PermutationImportance(clf, random_state=random_state).fit(X_test, Y_test)
+print(format_as_text(explain_weights(perm, feature_names = X_headers.to_list())))
+
+# Partial dependence plots
+from pdpbox import pdp, get_dataset
+# 1D PDP's
+print('\nPlotting 1D partial dependence plots with pdpbox')
+features_to_plot = ['Pressure/shear stresses','Deviation from parallel shear','Turbulence Re']
+for feature in features_to_plot:
+    print('\nPDP plot for ' + feature)
+    pdp_dist = pdp.pdp_isolate(model=clf, dataset=X_test, model_features=X_headers, feature=feature)
+    pdp.pdp_plot(pdp_dist, feature)
+
+## 2D PDP's #TODO - pdp contour plots not compatible with current version of matplotlib?
+#print('\nPlotting 2D partial dependence plots with pdpbox')
+#features_to_plot = ['Pressure/shear stresses','Deviation from parallel shear']
+#inter1  =  pdp.pdp_interact(model=clf, dataset=X_test, model_features=X_headers, features=features_to_plot)
+#pdp.pdp_interact_plot(pdp_interact_out=inter1, feature_names=features_to_plot), plot_type='contour')
+
+# SHAP plots
+import shap 
+print('\nSHapley Additive exPlanations (SHAP) plots')
+explainer = shap.TreeExplainer(clf) # Create shap explainer object
+
+# Standard SHAP value plots
+points = [10]
+for point in points:
+    print('Plotting SHAP values for point %d' %point)
+    data_for_prediction = X_test.iloc[point]
+    shap_values = explainer.shap_values(data_for_prediction) # Calculate shap values
+    shap.force_plot(explainer.expected_value[1], shap_values[1], data_for_prediction,matplotlib=True,text_rotation=45) #indexed with 1 as plotting for true values (replace with 0 for false)
+
+# Advanced SHAP plots
+data_for_prediction = X_test
+shap_values = explainer.shap_values(data_for_prediction) # Calculate shap values
+
+# SHAP summary plot
+print('\nCreating SHAP summary plot')
+plt.figure()
+shap.summary_plot(shap_values[1],features=X_test,feature_names=X_headers,plot_type='violin')
+#TODO - how to stop waiting before next plot?
+
+# SHAP dependence contribution plots
+print('\nCreating SHAP dependence contribution plots')
+features_to_plot = ['Pressure/shear stresses','Deviation from parallel shear','Turbulence Re']
+for feature in features_to_plot:
+    print('SHAP dependence plot for ' + feature)
+    shap.dependence_plot(feature, shap_values[1],features=X_test,feature_names=X_headers)
+# TODO - need to set interaction_index manually, by first computing SHAP interaction values. automatic selection only approximate?
 
 plt.show()
