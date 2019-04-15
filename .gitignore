@@ -5,3 +5,4 @@
 # other
 .idea/
 *.csv
+*.joblib

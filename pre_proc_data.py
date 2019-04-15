@@ -508,31 +508,36 @@ print('\nConvert data to pandas dataframes')
 print(  '---------------------------------')
 
 # Put features in pandas dataframe and report stats
-dataset = pd.DataFrame(q, columns=feature_labels)
-feat_descript = dataset.describe()
+q_dataset = pd.DataFrame(q, columns=feature_labels)
+q_descript = q_dataset.describe()
 print('\nStatistics of features:' )
-print(feat_descript)
+print(q_descript)
+
 filename = casename + '_feature_stats.csv'
 filename = os.path.join(debug_fileloc, filename)
 print('Writing feature stats to ', filename)
-feat_descript.to_csv(filename)
+q_descript.to_csv(filename)
+
+filename = casename + '_q_dataset.csv'
+filename = os.path.join(data_fileloc, filename)
+print('\nWriting final pandas data to ', filename)
+q_dataset.to_csv(filename,index=False)
 
 # Put errors in pandas dataframe and report stats
-temp_dataset = pd.DataFrame(e_bool, columns=error_labels)
-err_descript = temp_dataset.describe()
+e_dataset = pd.DataFrame(e_bool, columns=error_labels)
+e_descript = e_dataset.describe()
 print('\nStatistics of errors:')
-print(err_descript)
+print(e_descript)
+
 filename = casename + '_error_stats.csv' 
 filename = os.path.join(debug_fileloc, filename)
 print('Writing error stats to ', filename)
-err_descript.to_csv(filename)
+e_descript.to_csv(filename)
 
-# Combining dataframes into one and writing to file
-dataset = pd.concat([dataset, temp_dataset], axis=1)
-filename = casename + '_dataset.csv'
+filename = casename + '_e_dataset.csv'
 filename = os.path.join(data_fileloc, filename)
 print('\nWriting final pandas data to ', filename)
-dataset.to_csv(filename,index=False)
+e_dataset.to_csv(filename,index=False)
 
 print('\n-----------------------')
 print('Finished pre-processing')
