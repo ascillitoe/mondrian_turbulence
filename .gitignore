@@ -1,8 +1,8 @@
-# solution files
-*.vtk
-*.vtu
+# Compiled python modules.
+*.pyc
 
-# other
-.idea/
-*.csv
-*.joblib
+# Setuptools distribution folder.
+/dist/
+
+# Python egg metadata, regenerated from source files by setuptools.
+/*.egg-info
