@@ -263,38 +263,76 @@ def pred_target_plot_inter(clf,X,Y,features,label,grid_ranges=None):
 
     return fig, ax
 
-#def SHAP_ini(clf,X_test)
-#    import shap 
-#    explainer = shap.TreeExplainer(clf) # Create shap explainer object
-#    
-#    # Standard SHAP value plots
+def SHAP_values(clf,X,labels,label):
+    import shap 
+
+    # Extract the classifier object from the clf multilearn object
+    index = labels.to_list().index(label)
+    clf = clf.classifiers_[index]
+    clf.verbose = False #Turn verbose off after this to tidy prints
+
+    explainer = shap.TreeExplainer(clf) # Create shap explainer object
+    shap_values = explainer.shap_values(X) # Calculate shap values
+
+    return shap_values
+
+
+def SHAP_summary(X,feature_names,shap_values=None,clf=None,labels=None,label=None):
+    import shap
+
+    if(shap_values is None):
+        if(labels is None or label is None or clf is None):
+            quit('Stopping - Must provide clf, labels and label arguments to SHAP_summary if shap_values not provided')
+        shap_values = SHAP_values(clf,X,labels,label)
+
+    # SHAP summary plot
+    plt.figure()
+    shap.summary_plot(shap_values[1],features=X,feature_names=feature_names,plot_type='violin',show=False)
+    
+def SHAP_DepenContrib(X,feature_names,feature_to_plot,shap_values=None,clf=None,labels=None,label=None,interact='auto'):
+    import shap
+
+    if(shap_values is None):
+        if(labels is None or label is None or clf is None):
+            quit('Stopping - Must provide clf, labels and label arguments to SHAP_summary if shap_values not provided')
+        shap_values = SHAP_values(clf,X,labels,label)
+
+    # SHAP dependence contribution plots
+    plt.figure()
+    shap.dependence_plot(feature_to_plot, shap_values[1],features=X,feature_names=feature_names,show=False,interaction_index=interact)
+
+def SHAP_inter_values(clf,X,labels,label):
+    import shap
+
+    # Extract the classifier object from the clf multilearn object
+    index = labels.to_list().index(label)
+    clf = clf.classifiers_[index]
+    clf.verbose = False #Turn verbose off after this to tidy prints
+
+    explainer = shap.TreeExplainer(clf) # Create shap explainer object
+    shap_inter_values = explainer.shap_interaction_values(X) # Calculate shap interaction values
+
+    return shap_inter_values
+
+def SHAP_inter_grid(shap_inter_values,feature_names):
+    shap_inter_values = shap_inter_values[1]
+    tmp = np.abs(shap_inter_values).sum(0)
+    for i in range(tmp.shape[0]):
+        tmp[i,i] = 0
+    inds = np.argsort(-tmp.sum(0))[:50]
+    tmp2 = tmp[inds,:][:,inds]
+    plt.figure(figsize=(12,12))
+    plt.imshow(tmp2)
+    plt.yticks(range(tmp2.shape[0]), feature_names[inds], rotation=50.4, horizontalalignment="right")
+    plt.xticks(range(tmp2.shape[0]), feature_names[inds], rotation=50.4, horizontalalignment="left")
+    plt.gca().xaxis.tick_top()
+    plt.show()
+
+
+#    # Standard SHAP value plots - TODO find point value corresponding to nearest point to given coords - Need to get coords into ML space
 #    for point in points:
 #        print('Plotting SHAP values for point %d' %point)
 #        data_for_prediction = X_test.iloc[point]
 #        shap_values = explainer.shap_values(data_for_prediction) # Calculate shap values
 #        shap.force_plot(explainer.expected_value[1], shap_values[1], data_for_prediction,matplotlib=True,text_rotation=45) #indexed with 1 as plotting for true values (replace with 0 for false)
-#    
-#    # Advanced SHAP plots
-#    data_for_prediction = X_test
-#    shap_values = explainer.shap_values(data_for_prediction) # Calculate shap values
-#    
-#    # SHAP summary plot
-#    print('\nCreating SHAP summary plot')
-#    plt.figure()
-#    shap.summary_plot(shap_values[1],features=X_test,feature_names=X_headers,plot_type='violin')
-#    #TODO - how to stop waiting before next plot?
-#    
-#    # SHAP dependence contribution plots
-#    print('\nCreating SHAP dependence contribution plots')
-#    features_to_plot = ['Convection/production of k','Deviation from parallel shear','Pgrad along streamline','Viscosity ratio']
-#    for feature in features_to_plot:
-#        print('SHAP dependence plot for ' + feature)
-#        shap.dependence_plot(feature, shap_values[1],features=X_test,feature_names=X_headers)
-#    # TODO - need to set interaction_index manually, by first computing SHAP interaction values. automatic selection only approximate?
-#
-#
-#########
-## Finish
-#########
-## Show previously generated plots
-#plt.show()
+
