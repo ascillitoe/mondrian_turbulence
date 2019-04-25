@@ -9,6 +9,7 @@ from cfd2ml.utilities import print_cm
 import matplotlib.pyplot as plt
 
 def RF_classifier(q_dataset,e_dataset,casename,modelname,saveloc=None,accuracy=False,train_percentage=0.75,n_estimators=10,criterion='entropy',random_state=42):
+    from skmultilearn.problem_transform import BinaryRelevance
     from sklearn.model_selection import train_test_split
     from sklearn.preprocessing import StandardScaler
     from sklearn.ensemble import RandomForestClassifier
@@ -56,6 +57,7 @@ def RF_classifier(q_dataset,e_dataset,casename,modelname,saveloc=None,accuracy=F
     # Train random forest classifier on training data
     print('\nTraining Random Forest classifier on training data...')
     clf = RandomForestClassifier(n_estimators = n_estimators, criterion = criterion, random_state = random_state,verbose=True)
+    clf = BinaryRelevance(classifier=clf,require_dense=[False,True])
     clf.fit(X_train, Y_train)
 
     # Accuracy metrics and plots
@@ -65,7 +67,7 @@ def RF_classifier(q_dataset,e_dataset,casename,modelname,saveloc=None,accuracy=F
     # Predict test set for accuracy evaluation
     print('\nUse trained classifier to predict targets based on test features')
     Y_pred = clf.predict(X_test)
-    Y_pred = pd.DataFrame(Y_pred,columns=Y_headers)
+    Y_pred = pd.DataFrame(Y_pred.toarray(),columns=Y_headers)
     
     # Classifier accuracy
     print('\nSubset accuracy of classifier =  %.2f %%' %(accuracy_score(Y_test,Y_pred)*100) )
@@ -120,26 +122,33 @@ def RF_classifier(q_dataset,e_dataset,casename,modelname,saveloc=None,accuracy=F
     return clf, X_test, Y_test
 
 
-def permutation_importance(clf,X,Y,features,random_state=42):
+def permutation_importance(clf,X,Y,features,label,random_state=42):
     from eli5 import explain_weights, format_as_text
     from eli5.sklearn import PermutationImportance
-
+    
+    # Extract the classifier object from the clf multilearn object
+    index = Y.columns.to_list().index(label)
+    clf = clf.classifiers_[index]
     clf.verbose = False #Turn verbose off after this to tidy prints
+    Y = Y[label]
 
     # Calculate feature importances #TODO - how to pick out label from clf to print feature importances and pdp's for specified label
     perm = PermutationImportance(clf, random_state=random_state).fit(X, Y)
-    print(format_as_text(explain_weights(perm, feature_names = features)))
+    print(format_as_text(explain_weights(perm, feature_names = features),show=['feature_importances']))
 
     clf.verbose = True # reset
 
     return
   
-def pdp_1d(clf,X,features_to_plot,detailed=False):
+def pdp_1d(clf,X,Y,features_to_plot,label,detailed=False):
     from pdpbox import pdp
 
     figs = list()
     axs  = list()
 
+    # Extract the classifier object from the clf multilearn object
+    index = Y.columns.to_list().index(label)
+    clf = clf.classifiers_[index]
     clf.verbose = False #Turn verbose off after this to tidy prints
 
     for feature in features_to_plot:
@@ -157,9 +166,12 @@ def pdp_1d(clf,X,features_to_plot,detailed=False):
 
     return figs, axs
 
-def pdp_2d(clf,X,features_to_plot,plot_type='contour'):
+def pdp_2d(clf,X,Y,features_to_plot,label,plot_type='contour'):
     from pdpbox import pdp
 
+    # Extract the classifier object from the clf multilearn object
+    index = Y.columns.to_list().index(label)
+    clf = clf.classifiers_[index]
     clf.verbose = False #Turn verbose off after this to tidy prints
 
     inter  =  pdp.pdp_interact(model=clf, dataset=X, model_features=X.columns.to_list(), features=features_to_plot,percentile_ranges=[(5,95),(5,95)])
@@ -173,7 +185,7 @@ def pdp_2d(clf,X,features_to_plot,plot_type='contour'):
 
     return fig, ax
 
-def target_plot(X,Y,features_to_plot,target,grid_range=None):
+def target_plot(X,Y,features_to_plot,label,grid_range=None):
     from pdpbox import info_plots
 
     figs = list()
@@ -182,35 +194,38 @@ def target_plot(X,Y,features_to_plot,target,grid_range=None):
     df = pd.concat([X, Y], axis=1, join_axes=[X.index])
     for feature in features_to_plot:
         if(grid_range is None):
-            fig, ax, summary_df = info_plots.target_plot(df,feature=feature,feature_name=feature,target=target,grid_type='equal')
+            fig, ax, summary_df = info_plots.target_plot(df,feature=feature,feature_name=feature,target=label,grid_type='equal')
         else:
-            fig, ax, summary_df = info_plots.target_plot(df,feature=feature,feature_name=feature,target=target,grid_type='equal',
+            fig, ax, summary_df = info_plots.target_plot(df,feature=feature,feature_name=feature,target=label,grid_type='equal',
                     show_outliers='True',grid_range=grid_range)
         figs.append(fig)
         axs.append(ax)
 
     return figs, axs
 
-def target_plot_inter(X,Y,features,target,grid_ranges=None):
+def target_plot_inter(X,Y,features,label,grid_ranges=None):
     from pdpbox import info_plots
 
     df = pd.concat([X, Y], axis=1, join_axes=[X.index])
 
     if(grid_ranges is None):
-        fig, ax, summary_df = info_plots.target_plot_interact(df,features=features,feature_names=features,target=target,grid_types=['equal','equal'])
+        fig, ax, summary_df = info_plots.target_plot_interact(df,features=features,feature_names=features,target=label,grid_types=['equal','equal'])
     else:
-        fig, ax, summary_df = info_plots.target_plot_interact(df,features=features,feature_names=features,target=target,grid_types=['equal','equal'],
+        fig, ax, summary_df = info_plots.target_plot_interact(df,features=features,feature_names=features,target=label,grid_types=['equal','equal'],
                  show_outliers='True',grid_ranges=grid_ranges)
 
     return fig, ax
 
-def pred_target_plot(clf,X,features_to_plot,grid_range=None):
+def pred_target_plot(clf,X,Y,features_to_plot,label,grid_range=None):
     from pdpbox import info_plots
     
     figs = list()
     axs  = list()
 
     pd.options.mode.chained_assignment = None # Turn warning msg off
+    # Extract the classifier object from the clf multilearn object
+    index = Y.columns.to_list().index(label)
+    clf = clf.classifiers_[index]
     clf.verbose = False #Turn verbose off after this to tidy prints
 
     for feature in features_to_plot:
@@ -227,10 +242,14 @@ def pred_target_plot(clf,X,features_to_plot,grid_range=None):
 
     return figs, axs
 
-def pred_target_plot_inter(clf,X,features,grid_ranges=None):
+def pred_target_plot_inter(clf,X,Y,features,label,grid_ranges=None):
     from pdpbox import info_plots
     
     pd.options.mode.chained_assignment = None # Turn warning msg off
+
+    # Extract the classifier object from the clf multilearn object
+    index = Y.columns.to_list().index(label)
+    clf = clf.classifiers_[index]
     clf.verbose = False #Turn verbose off after this to tidy prints
 
     if(grid_ranges is None):
