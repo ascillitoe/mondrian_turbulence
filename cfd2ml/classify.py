@@ -94,12 +94,11 @@ def RF_classifier(q_dataset,e_dataset,casename,modelname,saveloc=None,accuracy=F
         # Plot precision-recall curve
         print('\nPlotting precision-recall score')
         Y_score = clf.predict_proba(X_test)
-        for l in range(0,nY):
-            if (nY>1):
-                precision, recall, thresholds = precision_recall_curve(Y_test[Y_headers[l]], Y_score[l][:,1])
-            else:
-                precision, recall, thresholds = precision_recall_curve(Y_test[Y_headers[l]], Y_score[:,1])
-            plt.step(recall, precision, alpha=0.5,where='post',label=Y_headers[l])
+        Y_score = pd.DataFrame(Y_score.toarray(),columns=Y_headers)
+
+        for label in Y_headers:
+            precision, recall, thresholds = precision_recall_curve(Y_test[label], Y_score[label])
+            plt.step(recall, precision, alpha=0.5,where='post',label=label)
         
         plt.xlabel('Recall')
         plt.ylabel('Precision')
