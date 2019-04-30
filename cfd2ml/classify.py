@@ -1,20 +1,21 @@
 import numpy as np
 import pandas as pd
 
-from joblib import dump
 import os
 
-from cfd2ml.utilities import print_cm
-
+from joblib import dump, load
 import matplotlib.pyplot as plt
 
-def RF_classifier(q_dataset,e_dataset,casename,modelname,saveloc=None,accuracy=False,train_percentage=0.75,n_estimators=10,criterion='entropy',random_state=42):
-    from skmultilearn.problem_transform import BinaryRelevance
+from skmultilearn.problem_transform import BinaryRelevance
+
+def RF_classifier(q_dataset,e_dataset,modelname,saveloc=None,accuracy=False,train_percentage=0.75,n_estimators=10,criterion='entropy',random_state=42):
     from sklearn.model_selection import train_test_split
     from sklearn.preprocessing import StandardScaler
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.metrics import accuracy_score
-    if(accuracy==True): from sklearn.metrics import classification_report, multilabel_confusion_matrix, precision_recall_curve
+    if(accuracy==True): 
+        from sklearn.metrics import classification_report, multilabel_confusion_matrix, precision_recall_curve
+        from cfd2ml.utilities import print_cm
 
     ##############
     # Prepare data
@@ -28,9 +29,6 @@ def RF_classifier(q_dataset,e_dataset,casename,modelname,saveloc=None,accuracy=F
     nX = X_headers.size
     nY = Y_headers.size
     
-    #Y_headers = [Y_headers[1]]
-    #nY = 1 #TODO - temp
-    
     print('\nFeatures:')
     for i in range(0,nX):
         print('%d/%d: %s' %(i+1,nX,X_headers[i]) )
@@ -41,7 +39,7 @@ def RF_classifier(q_dataset,e_dataset,casename,modelname,saveloc=None,accuracy=F
     # Split dataset into train and test dataset
     print('\nSpliting into test and training data. Training split = ', train_percentage*100, '%')
     X_train, X_test, Y_train, Y_test = train_test_split(q_dataset[X_headers], e_dataset[Y_headers],train_size=train_percentage,random_state=random_state)
-    
+
     print('Number of observations for training data = ', X_train.shape[0])
     print('Number of observations for test data = ',  X_test.shape[0])
     
@@ -78,8 +76,9 @@ def RF_classifier(q_dataset,e_dataset,casename,modelname,saveloc=None,accuracy=F
     if (accuracy==True):
         # Classification report (f1-score, recall etc)
         print('\nClassification report for each target:')
+        i = 0
         for label in Y_headers:
-            print('\nTarget %d: %sG' %(i+1,label))
+            print('\nTarget %d: %s' %(i+1,label))
             print(classification_report(Y_test[label], Y_pred[label],target_names=['Off','On']) )
         
         # Confusion matrix
@@ -118,7 +117,7 @@ def RF_classifier(q_dataset,e_dataset,casename,modelname,saveloc=None,accuracy=F
 
     clf.verbose = True # reset
 
-    return clf, X_test, Y_test
+    return clf, X_train.index, X_test.index
 
 
 def permutation_importance(clf,X,Y,features,label,random_state=42):
@@ -265,19 +264,28 @@ def pred_target_plot_inter(clf,X,Y,features,label,grid_ranges=None):
 def SHAP_values(clf,X,labels,label):
     import shap 
 
+    print('\nFinding Shapley values for ' + label)
+
     # Extract the classifier object from the clf multilearn object
     index = labels.to_list().index(label)
     clf = clf.classifiers_[index]
+
     clf.verbose = False #Turn verbose off after this to tidy prints
 
     explainer = shap.TreeExplainer(clf) # Create shap explainer object
     shap_values = explainer.shap_values(X) # Calculate shap values
+    
+    clf.verbose = True
+
+    print('FInished finding Shapley values for ' + label)
 
     return shap_values
 
 
 def SHAP_summary(X,feature_names,shap_values=None,clf=None,labels=None,label=None):
     import shap
+
+    print('Creating SHAP summary plot')
 
     if(shap_values is None):
         if(labels is None or label is None or clf is None):
@@ -288,8 +296,10 @@ def SHAP_summary(X,feature_names,shap_values=None,clf=None,labels=None,label=Non
     plt.figure()
     shap.summary_plot(shap_values[1],features=X,feature_names=feature_names,plot_type='violin',show=False)
     
-def SHAP_DepenContrib(X,feature_names,feature_to_plot,shap_values=None,clf=None,labels=None,label=None,interact='auto'):
+def SHAP_DepenContrib(X,feature_names,feature,shap_values=None,clf=None,labels=None,label=None,interact='auto'):
     import shap
+
+    print('Creating SHAP dependence contribution plot')
 
     if(shap_values is None):
         if(labels is None or label is None or clf is None):
@@ -298,10 +308,12 @@ def SHAP_DepenContrib(X,feature_names,feature_to_plot,shap_values=None,clf=None,
 
     # SHAP dependence contribution plots
     plt.figure()
-    shap.dependence_plot(feature_to_plot, shap_values[1],features=X,feature_names=feature_names,show=False,interaction_index=interact)
+    shap.dependence_plot(feature, shap_values[1],features=X,feature_names=feature_names,show=False,interaction_index=interact)
 
 def SHAP_inter_values(clf,X,labels,label):
     import shap
+
+    print('\nFinding Shapley interaction values for ' + label)
 
     # Extract the classifier object from the clf multilearn object
     index = labels.to_list().index(label)
@@ -311,9 +323,13 @@ def SHAP_inter_values(clf,X,labels,label):
     explainer = shap.TreeExplainer(clf) # Create shap explainer object
     shap_inter_values = explainer.shap_interaction_values(X) # Calculate shap interaction values
 
+    print('FInished finding Shapley interaction values for ' + label)
+
     return shap_inter_values
 
 def SHAP_inter_grid(shap_inter_values,feature_names):
+    print('\n Creating Shapley interaction values matrix')
+
     shap_inter_values = shap_inter_values[1]
     tmp = np.abs(shap_inter_values).sum(0)
     for i in range(tmp.shape[0]):
@@ -325,13 +341,40 @@ def SHAP_inter_grid(shap_inter_values,feature_names):
     plt.yticks(range(tmp2.shape[0]), feature_names[inds], rotation=50.4, horizontalalignment="right")
     plt.xticks(range(tmp2.shape[0]), feature_names[inds], rotation=50.4, horizontalalignment="left")
     plt.gca().xaxis.tick_top()
-    plt.show()
 
+def SHAP_force(clf,data,index,point,labels,label,type='bar'):
+    import shap
 
-#    # Standard SHAP value plots - TODO find point value corresponding to nearest point to given coords - Need to get coords into ML space
-#    for point in points:
-#        print('Plotting SHAP values for point %d' %point)
-#        data_for_prediction = X_test.iloc[point]
-#        shap_values = explainer.shap_values(data_for_prediction) # Calculate shap values
-#        shap.force_plot(explainer.expected_value[1], shap_values[1], data_for_prediction,matplotlib=True,text_rotation=45) #indexed with 1 as plotting for true values (replace with 0 for false)
+    print('\n SHAP force plot')
 
+    X      = data.pd.iloc[index]
+    points = data.vtk.points[index]
+
+    dist = points-point
+    dist = np.sqrt(dist[:,0]**2.0 + dist[:,1]**2.0 + dist[:,2]**2.0)
+    loc = np.argmin(dist)
+
+    print('point = ', point)
+    print('nearest point = ',points[loc,:])
+    print('distance = ',dist[loc])
+
+    # Extract the classifier object from the clf multilearn object
+    index = labels.to_list().index(label)
+    clf = clf.classifiers_[index]
+    clf.verbose = False #Turn verbose off after this to tidy prints
+    explainer = shap.TreeExplainer(clf)
+
+    datapoint = X.iloc[loc]
+    shap_value = explainer.shap_values(datapoint) # Calculate shap values
+    clf.verbose = True
+
+    if(type=='force'):
+        shap.force_plot(explainer.expected_value[1], shap_value[1], datapoint,matplotlib=True,text_rotation=45,show=False) #indexed with 1 as plotting for true values (replace with 0 for false)
+    elif(type=='bar'):
+        sort_ind = np.argsort(shap_value[1])[::-1]
+        y_pos = np.arange(np.size(shap_value[1]))
+        plt.barh(y_pos,shap_value[1][sort_ind],align='center')
+        ax = plt.gca()
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(X.columns[sort_ind])
+        ax.set_xlabel('SHAP value')

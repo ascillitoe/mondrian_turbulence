@@ -1,57 +1,31 @@
 import numpy as np
 import pandas as pd
 
-from vtk.numpy_interface import dataset_adapter as dsa
-from vtk.numpy_interface import algorithms as algs
-import vtki
-
 import os
 
+import vtki
+from vtk.numpy_interface import algorithms as algs
+
+from cfd2ml.base import CaseData
 from cfd2ml.utilities import build_cevm
 
-def preproc_RANS_and_LES(casename, RANS_filename, LES_filename, debug_fileloc, data_fileloc, xclip_min=[-1e99,-1e99,-1e99], xclip_max=[1e99,1e99,1e99],plot=False,debug=False,writedat=False,solver='incomp'):
+def preproc_RANS_and_LES(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_max=[1e99,1e99,1e99],plot=False,debug=False,solver='incomp'):
     
-    ###################
-    # Read in RANS data
-    ###################
-    print('\nReading data')
+    #################################
+    # Initial processing of RANS data
+    #################################
+    print('\nInitial processing of RANS data')
     print(  '------------')
     
-    filename = RANS_filename    
-    print('Reading RANS data from vtk file: ', filename)
-    
-    # Read vtk file with vtki
-    rans_vtk = vtki.read(filename)  
+    rans_vtk = q_data.vtk
     
     # Get basic info about mesh
     rans_nnode = rans_vtk.number_of_points
     rans_ncell = rans_vtk.number_of_cells
     print('Number of nodes = ', rans_nnode)
     print('Number of cells = ', rans_ncell)
-    
-    # Sort out scalar names (TODO - automate this somehow, very much for SU2 atm)
-    if (solver=='comp'):
-        rans_vtk.rename_scalar('Momentum','roU') #TODO - auto check if velocities or Momentum in vtk file
-        rans_vtk.rename_scalar('Pressure' ,'p') #TODO - Check if Energy or pressure etc
-        rans_vtk.rename_scalar('Density' ,'ro')
-        rans_vtk.rename_scalar('TKE' ,'k')
-        rans_vtk.rename_scalar('Omega' ,'w') #TODO - Read in eps if that is saved instead
-        rans_vtk.rename_scalar('Laminar_Viscosity','mu_l') #TODO - if this doesn't exist auto calc from sutherlands
-        rans_vtk.rename_scalar('Eddy_Viscosity','mu_t') #TODO - if this doesn't exist calc from k and w
-        rans_vtk.rename_scalar('Wall_Distance','d') #TODO - if this doesn't exist calc 
-        rans_vtk.point_arrays['U'] = rans_vtk.point_arrays['roU']/np.array([rans_vtk.point_arrays['ro'],]*3).transpose()
-    elif (solver=='incomp'):
-        rans_vtk.rename_scalar('Velocity','U')
-        rans_vtk.rename_scalar('Pressure' ,'p') #TODO - Check if Energy or pressure etc
-        rans_vtk.rename_scalar('TKE' ,'k')
-        rans_vtk.rename_scalar('Omega' ,'w') #TODO - Read in eps if that is saved instead
-        rans_vtk.rename_scalar('Laminar_Viscosity','mu_l') #TODO - if this doesn't exist auto calc from sutherlands
-        rans_vtk.rename_scalar('Eddy_Viscosity','mu_t') #TODO - if this doesn't exist calc from k and w
-        rans_vtk.rename_scalar('Wall_Distance','d') #TODO - if this doesn't exist calc 
-        rans_vtk.point_arrays['ro'] = np.ones(rans_nnode)*1.0 
-    else:
-        sys.exit('Error: solver should equal comp or incomp')
-    
+   
+    rans_vtk = search_rans_fields(rans_vtk,solver)
     print('List of RANS data fields:\n', rans_vtk.scalar_names)
     
     # Remove viscous wall d=0 points to prevent division by zero in feature construction
@@ -75,13 +49,11 @@ def preproc_RANS_and_LES(casename, RANS_filename, LES_filename, debug_fileloc, d
     print('New number of nodes = ', rans_nnode)
     print('New number of cells = ', rans_ncell)
     
-    # Read in LES data
-    ##################
-    filename = LES_filename 
-    print('\nReading LES data from vtk file: ', filename)
+    # Initial processing of LES data
+    ################################
+    print('\nInitial processing of LES data')
     
-    # Read vtk file with vtki
-    les_vtk = vtki.read(filename)  
+    les_vtk = e_data.vtk
     
     # Get basic info about mesh
     les_nnode = les_vtk.number_of_points
@@ -89,17 +61,8 @@ def preproc_RANS_and_LES(casename, RANS_filename, LES_filename, debug_fileloc, d
     print('Number of nodes = ', les_nnode)
     print('Number of cells = ', les_ncell)
     
-    # Sort out scalar names (TODO - automate this somehow)
-    les_vtk.rename_scalar('avgUx','U')
-    les_vtk.rename_scalar('avgUy','V')
-    les_vtk.point_arrays['W'] = np.ones(les_nnode)*0.0
-    les_vtk.rename_scalar('avgP' ,'p')
-    les_vtk.point_arrays['ro']  = np.ones(les_nnode) 
-    les_vtk.rename_scalar('UU','uu')
-    les_vtk.rename_scalar('VV','vv')
-    les_vtk.rename_scalar('WW','ww')
-    les_vtk.rename_scalar('UV','uv')
-    
+    les_vtk = search_les_fields(les_vtk)
+        
     print('List of LES data fields:\n', les_vtk.scalar_names)
     
     
@@ -115,17 +78,139 @@ def preproc_RANS_and_LES(casename, RANS_filename, LES_filename, debug_fileloc, d
     if (rans_nnode!=les_nnode): quit('Warning: rans_nnode != les_nnode... Interpolation failed')
     if (rans_ncell!=les_ncell): quit('Warning: rans_ncell != les_ncell... Interpolation failed')
     
-    # Wrap vtki objects in dsa wrapper
-    # NOTE - NO VTK OPERATIONS SUCH AS INTERP, SLICING ETC BEYOND THIS POINT
-    print('Wrapping vtk objects in dsa wrappers')
-    rans_dsa = dsa.WrapDataObject(rans_vtk)
-    les_dsa  = dsa.WrapDataObject(les_vtk)
-    
     ##############################################
     # Process RANS data to generate feature vector
     ##############################################
     print('\nProcessing RANS data into features')
     print(  '----------------------------------')
+
+    q, feature_labels = make_features(rans_vtk)
+    
+    # Store features in vtk obj
+    ###########################
+    rans_vtk.point_arrays['q'] = q
+    
+    ############################
+    # Generate LES error metrics
+    ############################
+    print('\nProcessing LES data into error metrics')
+    print(  '--------------------------------------')
+
+    e_raw, e_bool, error_labels = make_errors(les_vtk)
+    
+    # Store errors in vtk obj
+    ###########################
+    les_vtk.point_arrays['raw'] = e_raw
+    les_vtk.point_arrays['boolean'] = e_bool
+    
+    # Store features and targets (error metrics) in pandas dataframes
+    print('\nSaving data in pandas dataframes')
+    q_data.pd = pd.DataFrame(q, columns=feature_labels)
+    e_data.pd = pd.DataFrame(e_bool, columns=error_labels)
+
+    # Put new vtk data back into vtk objects
+    q_data.vtk = rans_vtk
+    e_data.vtk = les_vtk
+   
+    print('\n-----------------------')
+    print('Finished pre-processing')
+    print('-----------------------')
+    
+    #####################
+    # Plot stuff to check
+    #####################
+    if (plot):
+        print('\n Plotting...')
+        plotter = vtki.Plotter()
+        sargs = dict(interactive=True,height=0.25,title_font_size=12, label_font_size=11,shadow=True, n_labels=5, italic=True, fmt='%.1f',font_family='arial',vertical=False)
+        rans_vtk.point_arrays['plot'] = q3
+        clims = [np.min(q3), np.max(q3)]
+        print(clims)
+        plotter.add_mesh(rans_vtk,scalars='plot',rng=clims,scalar_bar_args=sargs)
+        plotter.view_xy()
+        #plotter.add_mesh(data2,scalars=J2[:,1,0],show_scalar_bar=True,scalar_bar_args=sargs,rng=[-100,100]) #can plot np array directly but colour bar doesn't work...
+        plotter.show()
+       
+    return q_data, e_data
+
+
+def preproc_RANS(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_max=[1e99,1e99,1e99],debug=False,solver='incomp'):
+   
+    ###################
+    # Read in RANS data
+    ###################
+    print('\nInitial processing of RANS data')
+    print(  '------------')
+    
+    rans_vtk = q_data.vtk
+
+    # Get basic info about mesh
+    rans_nnode = rans_vtk.number_of_points
+    rans_ncell = rans_vtk.number_of_cells
+    print('Number of nodes = ', rans_nnode)
+    print('Number of cells = ', rans_ncell)
+   
+    rans_vtk = search_rans_fields(rans_vtk,solver)
+    print('List of RANS data fields:\n', rans_vtk.scalar_names)
+    
+    # Remove viscous wall d=0 points to prevent division by zero in feature construction
+    print('Removing viscous wall (d=0) nodes from mesh')
+    rans_vtk = rans_vtk.threshold([1e-12,1e99],scalars='d')
+    print('Number of nodes extracted = ', rans_nnode - rans_vtk.number_of_points)
+    rans_nnode = rans_vtk.number_of_points
+    
+    # Clip mesh to given ranges
+    print('Clipping mesh to range: ', xclip_min, ' to ', xclip_max)
+    rans_vtk = rans_vtk.clip(normal='x', origin=xclip_min,invert=False)
+    rans_vtk = rans_vtk.clip(normal='x', origin=xclip_max,invert=True )
+    rans_vtk = rans_vtk.clip(normal='y', origin=xclip_min,invert=False)
+    rans_vtk = rans_vtk.clip(normal='y', origin=xclip_max,invert=True )
+    rans_vtk = rans_vtk.clip(normal='z', origin=xclip_min,invert=False)
+    rans_vtk = rans_vtk.clip(normal='z', origin=xclip_max,invert=True )
+    print('Number of nodes clipped = ', rans_nnode - rans_vtk.number_of_points)
+    
+    rans_nnode = rans_vtk.number_of_points
+    rans_ncell = rans_vtk.number_of_cells
+    print('New number of nodes = ', rans_nnode)
+    print('New number of cells = ', rans_ncell)
+    
+    # Process RANS data to generate feature vector
+    ##############################################
+    print('\nProcessing RANS data into features')
+    print(  '----------------------------------')
+
+    q, feature_labels = make_features(rans_vtk)
+    
+    # Store features in vtk obj
+    ###########################
+    rans_vtk.point_arrays['q'] = q
+ 
+    # Store features in pandas dataframe
+    print('\nSaving data in pandas dataframe')
+    q_data.pd = pd.DataFrame(q, columns=feature_labels)
+
+    # Put new vtk data back into vtk object
+    q_data.vtk = rans_vtk
+
+    print('\n-----------------------')
+    print('Finished pre-processing')
+    print('-----------------------')
+
+    return q_data
+
+
+def make_features(rans_vtk):
+    from vtk.numpy_interface import dataset_adapter as dsa
+
+    rans_nnode = rans_vtk.number_of_points
+
+    delij = np.zeros([rans_nnode,3,3])
+    for i in range(0,3): 
+        delij[:,i,i] = 1.0
+
+    # Wrap vtki object in dsa wrapper
+    rans_dsa = dsa.WrapDataObject(rans_vtk)
+
     print('Feature:')
     nfeat = 12
     feat = 0
@@ -282,9 +367,6 @@ def preproc_RANS_and_LES(casename, RANS_filename, LES_filename, debug_fileloc, d
     # Feature 10: Ratio of convection to production of k
     ####################################################
     print('10: Ratio of convection to production of k')
-    delij = np.zeros_like(Sij)
-    for i in range(0,3): 
-        delij[:,i,i] = 1.0
     uiuj = (2.0/3.0)*tke*delij - 2.0*nu_t*Sij
     
     dkdx  = algs.gradient(tke)
@@ -334,21 +416,26 @@ def preproc_RANS_and_LES(casename, RANS_filename, LES_filename, debug_fileloc, d
     q[:,feat] = (uiujcevmSij-uiujSij) / (uiujcevmSij+uiujSij)
     feature_labels[feat] = 'CEV comparison'
     feat += 1
-    
-    # Store features in vtk obj
-    ###########################
-    rans_vtk.point_arrays['q'] = q
-    
-    ############################
-    # Generate LES error metrics
-    ############################
-    print('\nProcessing LES data into error metrics')
-    print(  '--------------------------------------')
+
+    return q, feature_labels
+
+def make_errors(les_vtk):
+    from vtk.numpy_interface import dataset_adapter as dsa
+
+    les_nnode = les_vtk.number_of_points
+
+    delij = np.zeros([les_nnode,3,3])
+    for i in range(0,3): 
+        delij[:,i,i] = 1.0
+
+    # Wrap vtki object in dsa wrapper
+    les_dsa = dsa.WrapDataObject(les_vtk)
+
     print('Error metric:')
     nerr = 3
     err = 0
-    e_raw  = np.zeros([rans_nnode,nerr])
-    e_bool = np.zeros([rans_nnode,nerr],dtype=int)
+    e_raw  = np.zeros([les_nnode,nerr])
+    e_bool = np.zeros([les_nnode,nerr],dtype=int)
     error_labels = np.empty(nerr, dtype='object')
     
     # Copy Reynolds stresses to tensor
@@ -459,84 +546,51 @@ def preproc_RANS_and_LES(casename, RANS_filename, LES_filename, debug_fileloc, d
     e_bool[index,err] = 1
     error_labels[err] = 'Non-linearity'
     err += 1
-    
-    # Store errors in vtk obj
-    ###########################
-    les_vtk.point_arrays['raw'] = e_raw
-    les_vtk.point_arrays['boolean'] = e_bool
-    
-    # Write to vtk files
-    ####################
-    if (debug==True):
-        print('\nWriting data to vtk files')
-        print(  '-------------------------')
-        filename = casename + '_feat.vtk'
-        filename = os.path.join(debug_fileloc, filename)
-        print('Writing to features to ', filename)
-        rans_vtk.save(filename)
-        
-        filename = casename + '_err.vtk'
-        filename = os.path.join(debug_fileloc, filename)
-        print('Writing errors to ', filename)
-        les_vtk.save(filename)
-    
-    # Store features and targets (error metrics) in pandas dataframe, then save to disk #TODO - option to keep in memory when this script used as a function
-    print('\nConvert data to pandas dataframes')
-    print(  '---------------------------------')
-    
-    # Put features in pandas dataframe and report stats
-    q_dataset = pd.DataFrame(q, columns=feature_labels)
-    q_descript = q_dataset.describe()
-    print('\nStatistics of features:' )
-    print(q_descript)
-    
-    if (debug==True):
-        filename = casename + '_feature_stats.csv'
-        filename = os.path.join(debug_fileloc, filename)
-        print('Writing feature stats to ', filename)
-        q_descript.to_csv(filename)
-    
-    if(writedat==True):
-        filename = casename + '_q_dataset.csv'
-        filename = os.path.join(data_fileloc, filename)
-        print('\nWriting final pandas data to ', filename)
-        q_dataset.to_csv(filename,index=False)
-    
-    # Put errors in pandas dataframe and report stats
-    e_dataset = pd.DataFrame(e_bool, columns=error_labels)
-    e_descript = e_dataset.describe()
-    print('\nStatistics of errors:')
-    print(e_descript)
-   
-    if(debug==True):
-        filename = casename + '_error_stats.csv' 
-        filename = os.path.join(debug_fileloc, filename)
-        print('Writing error stats to ', filename)
-        e_descript.to_csv(filename)
-   
-    if(writedat==True):
-        filename = casename + '_e_dataset.csv'
-        filename = os.path.join(data_fileloc, filename)
-        print('\nWriting final pandas data to ', filename)
-        e_dataset.to_csv(filename,index=False)
-    
-    print('\n-----------------------')
-    print('Finished pre-processing')
-    print('-----------------------')
-    
-    #####################
-    # Plot stuff to check
-    #####################
-    if (plot):
-        print('\n Plotting...')
-        plotter = vtki.Plotter()
-        sargs = dict(interactive=True,height=0.25,title_font_size=12, label_font_size=11,shadow=True, n_labels=5, italic=True, fmt='%.1f',font_family='arial',vertical=False)
-        rans_vtk.point_arrays['plot'] = q3
-        clims = [np.min(q3), np.max(q3)]
-        print(clims)
-        plotter.add_mesh(rans_vtk,scalars='plot',rng=clims,scalar_bar_args=sargs)
-        plotter.view_xy()
-        #plotter.add_mesh(data2,scalars=J2[:,1,0],show_scalar_bar=True,scalar_bar_args=sargs,rng=[-100,100]) #can plot np array directly but colour bar doesn't work...
-        plotter.show()
-       
-    return e_dataset, q_dataset
+
+    return e_raw, e_bool, error_labels
+
+def search_rans_fields(rans_vtk,solver='incomp'):
+
+    rans_nnode = rans_vtk.number_of_points
+
+    # Sort out scalar names (TODO - automate this somehow, very much for SU2 atm)
+    if (solver=='comp'):
+        rans_vtk.rename_scalar('Momentum','roU') #TODO - auto check if velocities or Momentum in vtk file
+        rans_vtk.rename_scalar('Pressure' ,'p') #TODO - Check if Energy or pressure etc
+        rans_vtk.rename_scalar('Density' ,'ro')
+        rans_vtk.rename_scalar('TKE' ,'k')
+        rans_vtk.rename_scalar('Omega' ,'w') #TODO - Read in eps if that is saved instead
+        rans_vtk.rename_scalar('Laminar_Viscosity','mu_l') #TODO - if this doesn't exist auto calc from sutherlands
+        rans_vtk.rename_scalar('Eddy_Viscosity','mu_t') #TODO - if this doesn't exist calc from k and w
+        rans_vtk.rename_scalar('Wall_Distance','d') #TODO - if this doesn't exist calc 
+        rans_vtk.point_arrays['U'] = rans_vtk.point_arrays['roU']/np.array([rans_vtk.point_arrays['ro'],]*3).transpose()
+    elif (solver=='incomp'):
+        rans_vtk.rename_scalar('Velocity','U')
+        rans_vtk.rename_scalar('Pressure' ,'p') #TODO - Check if Energy or pressure etc
+        rans_vtk.rename_scalar('TKE' ,'k')
+        rans_vtk.rename_scalar('Omega' ,'w') #TODO - Read in eps if that is saved instead
+        rans_vtk.rename_scalar('Laminar_Viscosity','mu_l') #TODO - if this doesn't exist auto calc from sutherlands
+        rans_vtk.rename_scalar('Eddy_Viscosity','mu_t') #TODO - if this doesn't exist calc from k and w
+        rans_vtk.rename_scalar('Wall_Distance','d') #TODO - if this doesn't exist calc 
+        rans_vtk.point_arrays['ro'] = np.ones(rans_nnode)*1.0 
+    else:
+        sys.exit('Error: solver should equal comp or incomp')
+
+    return rans_vtk
+
+def search_les_fields(les_vtk):
+
+    les_nnode = les_vtk.number_of_points
+
+    # Sort out scalar names (TODO - automate this somehow)
+    les_vtk.rename_scalar('avgUx','U')
+    les_vtk.rename_scalar('avgUy','V')
+    les_vtk.point_arrays['W'] = np.ones(les_nnode)*0.0
+    les_vtk.rename_scalar('avgP' ,'p')
+    les_vtk.point_arrays['ro']  = np.ones(les_nnode) 
+    les_vtk.rename_scalar('UU','uu')
+    les_vtk.rename_scalar('VV','vv')
+    les_vtk.rename_scalar('WW','ww')
+    les_vtk.rename_scalar('UV','uv')
+
+    return les_vtk
