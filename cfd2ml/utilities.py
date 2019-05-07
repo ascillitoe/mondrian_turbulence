@@ -111,3 +111,46 @@ def print_cm(cm, labels, hide_zeroes=False, hide_diagonal=False, hide_threshold=
                 cell = cell if cm[i, j] > hide_threshold else empty_cell
             print(cell, end=" ")
         print()
+
+def netcdf_to_vtk(cdffile,vtkfile,cdfscalars,vtkscalars):
+    import vtki
+    from scipy.io.netcdf import netcdf_file as Dataset
+
+    # check scalar lists same length
+    if (len(cdfscalars) != len(vtkscalars)):
+        quit('WARNING: cdfscalars and vtkscalars in netcdf_to_vtk not same length')
+
+    # Read cdffile
+    print('\nReading NetCDF object from ', cdffile)
+    ncfile = Dataset(cdffile,'r')
+    
+    nx = ncfile.dimensions['resolution_x']
+    ny = ncfile.dimensions['resolution_y']
+    nz = ncfile.dimensions['resolution_z']
+
+    print('nx = ', nx)
+    print('ny = ', ny)
+    if (nz is not None): print('nz = ', nz)
+
+    # Extract grid data
+    x = np.array(ncfile.variables['grid_x'][0:nx],dtype='float64')
+    x = np.tile(x,(ny,1)).transpose()
+    y = np.array(ncfile.variables['grid_yx'][0:ny,0:nx],dtype='float64').transpose()
+    z = np.zeros_like(x)
+    
+    vtk_obj = vtki.StructuredGrid(x, y, z)
+
+    # Extract scalars in list and save in vtk object
+    for i in range(len(cdfscalars)):
+        print('cdfscalar "%s" to vtkscalar "%s"' %(cdfscalars[i],vtkscalars[i]))
+        var = np.array(ncfile.variables[cdfscalars[i]][0:ny,0:nx],dtype='float64').transpose()
+        vtk_obj.point_arrays[vtkscalars[i]] = var.flatten(order='F')        
+
+    # Write vtk file
+    print('\nWriting vtk object to ', vtkfile)
+    vtk_obj.save(vtkfile)
+
+
+    return vtk_obj
+
+
