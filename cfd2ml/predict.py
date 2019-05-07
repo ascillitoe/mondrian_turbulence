@@ -88,13 +88,33 @@ def predict_and_compare(q_data,e_data,modelname,loadloc='.',clf=None,accuracy=Fa
     new_data.vtk.point_arrays['Y_pred'] = Y_pred # Add Y_pred into new vtk grid
 
     Y_pred = pd.DataFrame(Y_pred,columns=Y_headers)
-    new_data.pd  = pd.DataFrame(Y_pred)  #Add to pandas dataframe
+#    new_data.pd  = Y_pred  #Add to pandas dataframe TODO overwriting comlumns, need to rename
 
     ###################################################
     # Compare to actual test data to determine accuracy
     ###################################################
     new_data.vtk.point_arrays['Y_true'] = Y_true.values # Add Y_true into the new vtk grid
-   
+
+    # construct array of classes [1,2,3,4] for True +ve, True -ve, False +ve, False -ve
+    true = Y_true.values
+    pred = Y_pred.values
+    confuse = np.zeros_like(true)
+    TP = np.where((true==1) & (pred==1))
+    TN = np.where((true==0) & (pred==0))
+    FP = np.where((true==1) & (pred==0))
+    FN = np.where((true==0) & (pred==1))
+    confuse[TP] = 1
+    confuse[TN] = 2
+    confuse[FP] = 3
+    confuse[FN] = 4
+
+    # Save in vtk object
+    new_data.vtk.point_arrays['Y_confuse'] = confuse
+
+    # Save in pandas object
+    Y_confuse = pd.DataFrame(confuse,columns=Y_headers)
+#    new_data.pd = Y_confuse TODO rename columns
+
     # Classifier accuracy
     print('\nSubset accuracy of classifier =  %.2f %%' %(accuracy_score(Y_true,Y_pred)*100) )
     print('\nClassifier accuracy for each target:')
@@ -117,7 +137,22 @@ def predict_and_compare(q_data,e_data,modelname,loadloc='.',clf=None,accuracy=Fa
             print('\nTarget %d: %s' %(i+1,label))
             print_cm(confuse_mat[i,:,:], ['Off','On'])
             i += 1
-        
+
+        # Print errors
+        nTP = np.sum(confuse==1,axis=0)
+        nTN = np.sum(confuse==2,axis=0)
+        nFP = np.sum(confuse==3,axis=0)
+        nFN = np.sum(confuse==4,axis=0)
+        err_tot = (nFP+nFN)/(nTP+nTN+nFP+nFN)
+        err_ca  = 0.5*( (nFP/(nTP+nFP)) + (nFN/(nTN+nFN)))
+        print('\nError rates:')
+        i = 0
+        for label in Y_headers:
+            print('\nTarget %d: %s' %(i+1,label))
+            print('Total error = %.2f %%' %(err_tot[i]))
+            print('Class-averaged error = %.2f %%' %(err_ca[i]))
+            i += 1
+
         # Plot precision-recall curve
         print('\nPlotting precision-recall score')
         Y_score = clf.predict_proba(X)

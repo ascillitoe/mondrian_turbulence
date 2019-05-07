@@ -183,7 +183,7 @@ def pdp_2d(clf,X,Y,features_to_plot,label,plot_type='contour'):
 
     return fig, ax
 
-def target_plot(X,Y,features_to_plot,label,grid_range=None):
+def target_plot(X,Y,features_to_plot,labels,grid_range=None):
     from pdpbox import info_plots
 
     figs = list()
@@ -192,9 +192,9 @@ def target_plot(X,Y,features_to_plot,label,grid_range=None):
     df = pd.concat([X, Y], axis=1, join_axes=[X.index])
     for feature in features_to_plot:
         if(grid_range is None):
-            fig, ax, summary_df = info_plots.target_plot(df,feature=feature,feature_name=feature,target=label,grid_type='equal')
+            fig, ax, summary_df = info_plots.target_plot(df,feature=feature,feature_name=feature,target=labels,grid_type='equal')
         else:
-            fig, ax, summary_df = info_plots.target_plot(df,feature=feature,feature_name=feature,target=label,grid_type='equal',
+            fig, ax, summary_df = info_plots.target_plot(df,feature=feature,feature_name=feature,target=labels,grid_type='equal',
                     show_outliers='True',grid_range=grid_range)
         figs.append(fig)
         axs.append(ax)
@@ -295,7 +295,7 @@ def SHAP_summary(X,feature_names,shap_values=None,clf=None,labels=None,label=Non
     # SHAP summary plot
     plt.figure()
     shap.summary_plot(shap_values[1],features=X,feature_names=feature_names,plot_type='violin',show=False)
-    
+
 def SHAP_DepenContrib(X,feature_names,feature,shap_values=None,clf=None,labels=None,label=None,interact='auto'):
     import shap
 
@@ -373,6 +373,7 @@ def SHAP_force(clf,data,index,point,labels,label,type='bar'):
     elif(type=='bar'):
         sort_ind = np.argsort(shap_value[1])[::-1]
         y_pos = np.arange(np.size(shap_value[1]))
+        plt.figure()
         plt.barh(y_pos,shap_value[1][sort_ind],align='center')
         ax = plt.gca()
         ax.set_yticks(y_pos)

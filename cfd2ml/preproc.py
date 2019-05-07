@@ -537,7 +537,10 @@ def make_errors(les_vtk):
         #roots = roots.real[abs(roots.imag)<1e-5]  #NOTE - Matches nu_t much better without this?!
     
         # Out of remaining solutions(s), pick one that is closest to linear nu_t
-        nu_t_cevm[i] = roots.real[np.argmin( np.abs(roots - np.full(roots.size,nu_t[i])) )]
+        if(roots.size==0):
+            nu_t_cevm[i] = nu_t[i]
+        else:
+            nu_t_cevm[i] = roots.real[np.argmin( np.abs(roots - np.full(roots.size,nu_t[i])) )]
     
     normdiff = algs.abs(nu_t_cevm - nu_t) / (algs.abs(nu_t_cevm) + algs.abs(nu_t) + 1e-12)
     e_raw[:,err] = nu_t_cevm
