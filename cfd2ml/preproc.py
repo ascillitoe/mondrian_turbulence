@@ -25,9 +25,6 @@ def preproc_RANS_and_LES(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_ma
     print('Number of nodes = ', rans_nnode)
     print('Number of cells = ', rans_ncell)
    
-    rans_vtk = search_rans_fields(rans_vtk,solver)
-    print('List of RANS data fields:\n', rans_vtk.scalar_names)
-    
     # Remove viscous wall d=0 points to prevent division by zero in feature construction
     print('Removing viscous wall (d=0) nodes from mesh')
     rans_vtk = rans_vtk.threshold([1e-12,1e99],scalars='d')
@@ -60,11 +57,6 @@ def preproc_RANS_and_LES(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_ma
     les_ncell = les_vtk.number_of_cells
     print('Number of nodes = ', les_nnode)
     print('Number of cells = ', les_ncell)
-    
-    les_vtk = search_les_fields(les_vtk)
-        
-    print('List of LES data fields:\n', les_vtk.scalar_names)
-    
     
     #####################################
     # Interpolate LES data onto RANS mesh
@@ -150,9 +142,6 @@ def preproc_RANS(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_max=[1e99,
     print('Number of nodes = ', rans_nnode)
     print('Number of cells = ', rans_ncell)
    
-    rans_vtk = search_rans_fields(rans_vtk,solver)
-    print('List of RANS data fields:\n', rans_vtk.scalar_names)
-    
     # Remove viscous wall d=0 points to prevent division by zero in feature construction
     print('Removing viscous wall (d=0) nodes from mesh')
     rans_vtk = rans_vtk.threshold([1e-12,1e99],scalars='d')
@@ -551,49 +540,3 @@ def make_errors(les_vtk):
     err += 1
 
     return e_raw, e_bool, error_labels
-
-def search_rans_fields(rans_vtk,solver='incomp'):
-
-    rans_nnode = rans_vtk.number_of_points
-
-    # Sort out scalar names (TODO - automate this somehow, very much for SU2 atm)
-    if (solver=='comp'):
-        rans_vtk.rename_scalar('Momentum','roU') #TODO - auto check if velocities or Momentum in vtk file
-        rans_vtk.rename_scalar('Pressure' ,'p') #TODO - Check if Energy or pressure etc
-        rans_vtk.rename_scalar('Density' ,'ro')
-        rans_vtk.rename_scalar('TKE' ,'k')
-        rans_vtk.rename_scalar('Omega' ,'w') #TODO - Read in eps if that is saved instead
-        rans_vtk.rename_scalar('Laminar_Viscosity','mu_l') #TODO - if this doesn't exist auto calc from sutherlands
-        rans_vtk.rename_scalar('Eddy_Viscosity','mu_t') #TODO - if this doesn't exist calc from k and w
-        rans_vtk.rename_scalar('Wall_Distance','d') #TODO - if this doesn't exist calc 
-        rans_vtk.point_arrays['U'] = rans_vtk.point_arrays['roU']/np.array([rans_vtk.point_arrays['ro'],]*3).transpose()
-    elif (solver=='incomp'):
-        rans_vtk.rename_scalar('Velocity','U')
-        rans_vtk.rename_scalar('Pressure' ,'p') #TODO - Check if Energy or pressure etc
-        rans_vtk.rename_scalar('TKE' ,'k')
-        rans_vtk.rename_scalar('Omega' ,'w') #TODO - Read in eps if that is saved instead
-        rans_vtk.rename_scalar('Laminar_Viscosity','mu_l') #TODO - if this doesn't exist auto calc from sutherlands
-        rans_vtk.rename_scalar('Eddy_Viscosity','mu_t') #TODO - if this doesn't exist calc from k and w
-        rans_vtk.rename_scalar('Wall_Distance','d') #TODO - if this doesn't exist calc 
-        rans_vtk.point_arrays['ro'] = np.ones(rans_nnode)*1.0 
-    else:
-        sys.exit('Error: solver should equal comp or incomp')
-
-    return rans_vtk
-
-def search_les_fields(les_vtk):
-
-    les_nnode = les_vtk.number_of_points
-
-    # Sort out scalar names (TODO - automate this somehow)
-    les_vtk.rename_scalar('avgUx','U')
-    les_vtk.rename_scalar('avgUy','V')
-    les_vtk.point_arrays['W'] = np.ones(les_nnode)*0.0
-    les_vtk.rename_scalar('avgP' ,'p')
-    les_vtk.point_arrays['ro']  = np.ones(les_nnode) 
-    les_vtk.rename_scalar('UU','uu')
-    les_vtk.rename_scalar('VV','vv')
-    les_vtk.rename_scalar('WW','ww')
-    les_vtk.rename_scalar('UV','uv')
-
-    return les_vtk

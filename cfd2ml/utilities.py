@@ -112,7 +112,7 @@ def print_cm(cm, labels, hide_zeroes=False, hide_diagonal=False, hide_threshold=
             print(cell, end=" ")
         print()
 
-def netcdf_to_vtk(cdffile,vtkfile,cdfscalars,vtkscalars):
+def netcdf_to_vtk(cdffile,cdfscalars,vtkscalars):
     import vtki
     from scipy.io.netcdf import netcdf_file as Dataset
 
@@ -146,11 +146,92 @@ def netcdf_to_vtk(cdffile,vtkfile,cdfscalars,vtkscalars):
         var = np.array(ncfile.variables[cdfscalars[i]][0:ny,0:nx],dtype='float64').transpose()
         vtk_obj.point_arrays[vtkscalars[i]] = var.flatten(order='F')        
 
-    # Write vtk file
-    print('\nWriting vtk object to ', vtkfile)
-    vtk_obj.save(vtkfile)
-
-
     return vtk_obj
 
+def search_les_fields(vtk,hasw=False,hasro=False):
+    # required arrays: ro,U,V,W,p,uu,vv,ww,uv,uw,vw
+    mydict = {}
+    mydict['U']  = ['mean_u_xyz','avgUx']
+    mydict['V']  = ['mean_v_xyz','avgUy']
+    mydict['p']  = ['mean_p_xyz','avgP']
+    mydict['uu'] = ['reynolds_stress_uu_xyz','UU']
+    mydict['vv'] = ['reynolds_stress_vv_xyz','VV']
+    mydict['ww'] = ['reynolds_stress_ww_xyz','WW']
+    mydict['uv'] = ['reynolds_stress_uv_xyz','UV']
+    mydict['uw'] = ['reynolds_stress_uw_xyz','UW']
+    mydict['vw'] = ['reynolds_stress_vw_xyz','VW']
+
+    if(hasw==True):
+        mydict['W']  = ['mean_w_xyz','avgUz']
+    else:
+        vtk.point_arrays['W'] = np.zeros(vtk.number_of_points)
+
+    if(hasro==True):
+        mydict['ro']  = ['mean_ro_xyz','Density']
+    else:
+        vtk.point_arrays['ro'] = np.ones(vtk.number_of_points)
+
+    scalars = vtk.scalar_names
+    print('\nSearching in vtk object to find desired scalar fields')
+    print('Current scalars: ' + str(scalars))
+    print('Searching for: ' + str(list(mydict.keys())))
+
+
+    for want in mydict.keys():
+        if(want not in scalars): 
+            possible = mydict[want]
+            scalar = find_scalar(want,scalars,possible)
+            vtk.rename_scalar(scalar,want)
+
+    return vtk
+
+def search_rans_fields(vtk,comp=False):
+    # required arrays: ro,U,p,k,w,mu_l,mu_t,d
+    mydict = {}
+
+    mydict['p']    = ['Pressure']
+    mydict['k']    = ['TKE']
+    mydict['w']    = ['Omega']
+    mydict['mu_l'] = ['Laminar_Viscosity']
+    mydict['mu_t'] = ['Eddy_Viscosity']
+    mydict['d'] = ['Wall_Distance']
+
+    if(comp==True):
+        mydict['roU'] = ['Momentum']
+        mydict['ro']  = ['Density']
+    else:
+        mydict['U']  = ['Velocity']
+        vtk.point_arrays['ro'] = np.ones(vtk.number_of_points)
+
+    scalars = vtk.scalar_names
+    print('\nSearching in vtk object to find desired scalar fields')
+    print('Current scalars: ' + str(scalars))
+    print('Searching for: ' + str(list(mydict.keys())))
+
+    for want in mydict.keys():
+        if(want not in scalars): 
+            possible = mydict[want]
+            scalar = find_scalar(want,scalars,possible)
+            vtk.rename_scalar(scalar,want)
+
+    if (comp==True): 
+        vtk.point_arrays['roU'] = rans_vtk.point_arrays['roU']/np.array([rans_vtk.point_arrays['ro'],]*3).transpose()
+        vtk.rename_scalar('roU','U')
+
+    return vtk
+
+
+
+def find_scalar(want,list,possible):
+    found = [i for i in possible if i in list]
+    if not found:
+        quitstr = want + ' not found in vtk object. Possible scalar names: ' + str(possible)
+        quit(quitstr)
+    elif(len(found)>1):
+        quitstr = 'Found more than one option for scalar called ' + want + '. Option found = ' + str(found)
+        quit(quitstr)
+    else:
+        found = found[0]
+        print('Found scalar field ' + want + ', called ' + str(found) + '. Renaming...')
+    return found
 
