@@ -3,7 +3,7 @@ import pandas as pd
 
 import os
 
-import vtki
+import vista
 from vtk.numpy_interface import algorithms as algs
 
 from cfd2ml.base import CaseData
@@ -62,7 +62,7 @@ def preproc_RANS_and_LES(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_ma
     # Interpolate LES data onto RANS mesh
     #####################################
     print('Interpolating LES data onto RANS mesh')
-    les_vtk = rans_vtk.interpolate(les_vtk)
+    les_vtk = rans_vtk.sample(les_vtk)
     les_nnode = les_vtk.number_of_points
     les_ncell = les_vtk.number_of_cells
     
@@ -113,7 +113,7 @@ def preproc_RANS_and_LES(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_ma
     #####################
     if (plot):
         print('\n Plotting...')
-        plotter = vtki.Plotter()
+        plotter = vista.Plotter()
         sargs = dict(interactive=True,height=0.25,title_font_size=12, label_font_size=11,shadow=True, n_labels=5, italic=True, fmt='%.1f',font_family='arial',vertical=False)
         rans_vtk.point_arrays['plot'] = q3
         clims = [np.min(q3), np.max(q3)]
@@ -197,7 +197,7 @@ def make_features(rans_vtk):
     for i in range(0,3): 
         delij[:,i,i] = 1.0
 
-    # Wrap vtki object in dsa wrapper
+    # Wrap vista object in dsa wrapper
     rans_dsa = dsa.WrapDataObject(rans_vtk)
 
     print('Feature:')
@@ -417,7 +417,7 @@ def make_errors(les_vtk):
     for i in range(0,3): 
         delij[:,i,i] = 1.0
 
-    # Wrap vtki object in dsa wrapper
+    # Wrap vista object in dsa wrapper
     les_dsa = dsa.WrapDataObject(les_vtk)
 
     print('Error metric:')

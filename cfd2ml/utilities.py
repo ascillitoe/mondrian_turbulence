@@ -113,7 +113,7 @@ def print_cm(cm, labels, hide_zeroes=False, hide_diagonal=False, hide_threshold=
         print()
 
 def netcdf_to_vtk(cdffile,cdfscalars,vtkscalars):
-    import vtki
+    import vista
     from scipy.io.netcdf import netcdf_file as Dataset
 
     # check scalar lists same length
@@ -138,7 +138,7 @@ def netcdf_to_vtk(cdffile,cdfscalars,vtkscalars):
     y = np.array(ncfile.variables['grid_yx'][0:ny,0:nx],dtype='float64').transpose()
     z = np.zeros_like(x)
     
-    vtk_obj = vtki.StructuredGrid(x, y, z)
+    vtk_obj = vista.StructuredGrid(x, y, z)
 
     # Extract scalars in list and save in vtk object
     for i in range(len(cdfscalars)):

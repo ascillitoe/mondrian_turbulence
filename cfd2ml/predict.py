@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from joblib import dump, load
 import matplotlib.pyplot as plt
-import vtki
+import vista
 from cfd2ml.base import CaseData
 
 def predict(q_data,modelname,loadloc='.',clf=None):
@@ -39,7 +39,7 @@ def predict(q_data,modelname,loadloc='.',clf=None):
     new_data = CaseData('model_' + modelname + '_qdat_' + q_data.name) 
     new_data.pd  = pd.DataFrame(Y_pred)  #Add to pandas dataframe
 
-    new_data.vtk = vtki.UnstructuredGrid(q_data.vtk.offset,q_data.vtk.cells,q_data.vtk.celltypes,q_data.vtk.points) #init new vtk grid with same cells and points as q_data.vtk
+    new_data.vtk = vista.UnstructuredGrid(q_data.vtk.offset,q_data.vtk.cells,q_data.vtk.celltypes,q_data.vtk.points) #init new vtk grid with same cells and points as q_data.vtk
     new_data.vtk.point_arrays['Y_pred'] = Y_pred # Add Y_pred into new vtk grid
 
     return new_data
@@ -84,7 +84,7 @@ def predict_and_compare(q_data,e_data,modelname,loadloc='.',clf=None,accuracy=Fa
     # Save prediction to new CaseData object
     new_data = CaseData('model_' + modelname + '_qdat_' + q_data.name) 
 
-    new_data.vtk = vtki.UnstructuredGrid(q_data.vtk.offset,q_data.vtk.cells,q_data.vtk.celltypes,q_data.vtk.points) #init new vtk grid with same cells and points as q_data.vtk
+    new_data.vtk = vista.UnstructuredGrid(q_data.vtk.offset,q_data.vtk.cells,q_data.vtk.celltypes,q_data.vtk.points) #init new vtk grid with same cells and points as q_data.vtk
     new_data.vtk.point_arrays['Y_pred'] = Y_pred # Add Y_pred into new vtk grid
 
     Y_pred = pd.DataFrame(Y_pred,columns=Y_headers)

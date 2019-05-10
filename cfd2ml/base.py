@@ -1,10 +1,10 @@
-# Doing this as want to store vtki and pandas in one class, so can pass around between preproc, classifiy and predict easily
-import vtki
+# Doing this as want to store vista and pandas in one class, so can pass around between preproc, classifiy and predict easily
+import vista
 import pandas as pd
 import os
 import pickle
 
-# CaseData object to store pandas and vtki objects together, with read and write capability                                                                                                                                                                                 
+# CaseData object to store pandas and vista objects together, with read and write capability                                                                                                                                                                                 
 class CaseData:
     def __init__(self, name):
 
@@ -21,7 +21,7 @@ class CaseData:
 
     def ReadVTK(self,filename):
         print("Reading vtk data from " + filename + " into CaseData called " + self.name)
-        self.vtk     = vtki.read(filename)
+        self.vtk     = vista.read(filename)
         self.vtkfile = filename
 
     def ReadPandas(self,filename):
@@ -57,9 +57,9 @@ class CaseData:
             self.vtkfile = os.path.join(fileloc,self.name + '.vtk')
             self.WriteVTK(self.vtkfile)
         elif(self.vtk is not None and self.vtkfile is not None): #if vtk data and file, still check if the vtk grid has been modified (e.g. clipped etc), or new arrays. If yes write a new file.
-            oldnnode = vtki.read(self.vtkfile).number_of_points
+            oldnnode = vista.read(self.vtkfile).number_of_points
             newnnode = self.vtk.number_of_points
-            oldnarray = vtki.read(self.vtkfile).n_scalars
+            oldnarray = vista.read(self.vtkfile).n_scalars
             newnarray = self.vtk.n_scalars
             if (newnnode != oldnnode):
                 file = os.path.split(self.vtkfile)
