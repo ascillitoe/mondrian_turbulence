@@ -57,19 +57,7 @@ def preproc_RANS_and_LES(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_ma
     les_ncell = les_vtk.number_of_cells
     print('Number of nodes = ', les_nnode)
     print('Number of cells = ', les_ncell)
-    
-    #####################################
-    # Interpolate LES data onto RANS mesh
-    #####################################
-    print('Interpolating LES data onto RANS mesh')
-    les_vtk = rans_vtk.sample(les_vtk)
-    les_nnode = les_vtk.number_of_points
-    les_ncell = les_vtk.number_of_cells
-    
-    # Check nnode and nncell for LES and RANS now match
-    if (rans_nnode!=les_nnode): quit('Warning: rans_nnode != les_nnode... Interpolation failed')
-    if (rans_ncell!=les_ncell): quit('Warning: rans_ncell != les_ncell... Interpolation failed')
-    
+        
     ##############################################
     # Process RANS data to generate feature vector
     ##############################################
@@ -89,12 +77,25 @@ def preproc_RANS_and_LES(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_ma
     print(  '--------------------------------------')
 
     e_raw, e_bool, error_labels = make_errors(les_vtk)
-    
+ 
     # Store errors in vtk obj
-    ###########################
     les_vtk.point_arrays['raw'] = e_raw
     les_vtk.point_arrays['boolean'] = e_bool
+     
+    #####################################
+    # Interpolate LES data onto RANS mesh (do after metrics are generated so Sij etc from fine mesh)
+    #####################################
+    print('Interpolating LES data onto RANS mesh')
+    les_vtk = rans_vtk.sample(les_vtk,pass_point_arrays=False)
+    les_nnode = les_vtk.number_of_points
+    les_ncell = les_vtk.number_of_cells
     
+    # Check nnode and nncell for LES and RANS now match
+    if (rans_nnode!=les_nnode): quit('Warning: rans_nnode != les_nnode... Interpolation failed')
+    if (rans_ncell!=les_ncell): quit('Warning: rans_ncell != les_ncell... Interpolation failed')
+
+    e_bool = les_vtk.point_arrays['boolean']
+
     # Store features and targets (error metrics) in pandas dataframes
     print('\nSaving data in pandas dataframes')
     q_data.pd = pd.DataFrame(q, columns=feature_labels)
@@ -411,6 +412,8 @@ def make_features(rans_vtk):
 def make_errors(les_vtk):
     from vtk.numpy_interface import dataset_adapter as dsa
 
+    from tqdm import tqdm
+
     les_nnode = les_vtk.number_of_points
 
     delij = np.zeros([les_nnode,3,3])
@@ -517,7 +520,7 @@ def make_errors(les_vtk):
             D += (2.0/3.0)*tke*Sij[:,i,j]*delij[:,i,j] - uiuj[:,i,j]*Sij[:,i,j]
     
     nu_t_cevm = np.empty_like(nu_t)
-    for i in range(0,les_nnode):
+    for i in tqdm(range(0,les_nnode)):
         # Find the roots of the cubic equation (i.e. potential values for nu_t_cevm)
         roots = np.roots([A[i],B[i],C[i],D[i]])
         roots_orig = roots

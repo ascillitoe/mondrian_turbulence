@@ -22,22 +22,22 @@ class CaseData:
     def ReadVTK(self,filename):
         print("Reading vtk data from " + filename + " into CaseData called " + self.name)
         self.vtk     = vista.read(filename)
-        self.vtkfile = filename
+        self.vtkfile = os.path.abspath(filename)
 
     def ReadPandas(self,filename):
         print("Reading csv data from " + filename + " into CaseData called " + self.name)
         self.pd = pd.read_csv(filename)
-        self.csvfile = filename
+        self.csvfile = os.path.abspath(filename)
 
     def WriteVTK(self,filename):
         print("Writing vtk data from " + self.name + " CaseData to file called " + filename)
         self.vtk.save(filename)
-        self.vtkfile = filename
+        self.vtkfile = os.path.abspath(filename)
 
     def WritePandas(self,filename,index=False):
         print("Writing pandas DataFrame from " + self.name + " CaseData to file called " + filename)
         self.pd.to_csv(filename,index=index)
-        self.csvfile = filename
+        self.csvfile = os.path.abspath(filename)
 
     def WritePandasStats(self,filename):
         print('Writing statistics of pandas data from ' + self.name + ' CaseData to ', filename)
@@ -53,31 +53,37 @@ class CaseData:
 
         mydict = {'name':self.name}
 
-        if(self.vtk is not None and self.vtkfile is None): #If vtk data, but no vtkfile, then the data is new so write a vtkfile 
-            self.vtkfile = os.path.join(fileloc,self.name + '.vtk')
+        if(self.vtk is not None):
+            self.vtkfile = os.path.abspath(os.path.join(fileloc,self.name + '.vtk'))
             self.WriteVTK(self.vtkfile)
-        elif(self.vtk is not None and self.vtkfile is not None): #if vtk data and file, still check if the vtk grid has been modified (e.g. clipped etc), or new arrays. If yes write a new file.
-            oldnnode = vista.read(self.vtkfile).number_of_points
-            newnnode = self.vtk.number_of_points
-            oldnarray = vista.read(self.vtkfile).n_scalars
-            newnarray = self.vtk.n_scalars
-            if (newnnode != oldnnode):
-                file = os.path.split(self.vtkfile)
-                self.vtkfile = os.path.join(file[0],'new_' + file[1])
-                print('\nNumber of nodes in vtk grid has changed, writing a modified vtk file: ' + self.vtkfile)
-                print('Old nnode = ', oldnnode)
-                print('New nnode = ', newnnode)
-                self.WriteVTK(self.vtkfile)
-            elif(newnarray!=oldnarray):
-                file = os.path.split(self.vtkfile)
-                self.vtkfile = os.path.join(file[0],'new_' + file[1])
-                print('\nNumber of arrays in vtk data has changed, writing a modified vtk file: ' + self.vtkfile)
-                print('Old narray = ', oldnarray)
-                print('New narray = ', newnarray)
-                self.WriteVTK(self.vtkfile)
+
+        
+#        if(self.vtk is not None and self.vtkfile is None): #If vtk data, but no vtkfile, then the data is new so write a vtkfile 
+#            self.vtkfile = os.path.abspath(os.path.join(fileloc,self.name + '.vtk'))
+#            self.WriteVTK(self.vtkfile)
+#        elif(self.vtk is not None and self.vtkfile is not None): #if vtk data and file, still check if the vtk grid has been modified (e.g. clipped etc), or new arrays. If yes write a new file.
+# THIS IS ALL TOO COMPLICATED... SIMPLIFY!            
+#            oldnnode = vista.read(self.vtkfile).number_of_points
+#            newnnode = self.vtk.number_of_points
+#            oldnarray = vista.read(self.vtkfile).n_scalars
+#            newnarray = self.vtk.n_scalars
+#            if (newnnode != oldnnode):
+#                file = os.path.split(self.vtkfile)
+#                self.vtkfile = os.path.abspath(os.path.join(file[0],'new_' + file[1]))
+#                print('\nNumber of nodes in vtk grid has changed, writing a modified vtk file: ' + self.vtkfile)
+#                print('Old nnode = ', oldnnode)
+#                print('New nnode = ', newnnode)
+#                self.WriteVTK(self.vtkfile)
+#            elif(newnarray!=oldnarray):
+#                file = os.path.split(self.vtkfile)
+#                self.vtkfile = os.path.abspath(os.path.join(file[0],'new_' + file[1]))
+#                print('\nNumber of arrays in vtk data has changed, writing a modified vtk file: ' + self.vtkfile)
+#                print('Old narray = ', oldnarray)
+#                print('New narray = ', newnarray)
+#                self.WriteVTK(self.vtkfile)
 
         if(self.pd is not None and self.csvfile is None):
-            self.csvfile = os.path.join(fileloc,self.name + '.csv')
+            self.csvfile = os.path.abspath(os.path.join(fileloc,self.name + '.csv'))
             self.WritePandas(self.csvfile)
 
         mydict['vtk file'] = self.vtkfile 
@@ -108,3 +114,6 @@ class CaseData:
 
         if(self.csvfile is not None):
             self.ReadPandas(self.csvfile)
+
+        self.vtkfile = os.path.abspath(self.vtkfile)
+        self.csvfile = os.path.abspath(self.csvfile)
