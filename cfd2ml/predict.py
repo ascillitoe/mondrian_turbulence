@@ -149,8 +149,8 @@ def predict_and_compare(q_data,e_data,modelname,loadloc='.',clf=None,accuracy=Fa
         i = 0
         for label in Y_headers:
             print('\nTarget %d: %s' %(i+1,label))
-            print('Total error = %.2f %%' %(err_tot[i]))
-            print('Class-averaged error = %.2f %%' %(err_ca[i]))
+            print('Total error = %.2f %%' %(err_tot[i]*100))
+            print('Class-averaged error = %.2f %%' %(err_ca[i]*100))
             i += 1
 
         # Plot precision-recall curve
