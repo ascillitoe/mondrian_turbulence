@@ -227,14 +227,25 @@ def SHAP_inter_grid(shap_inter_values,feature_names):
     plt.xticks(range(tmp2.shape[0]), feature_names[inds], rotation=50.4, horizontalalignment="left")
     plt.gca().xaxis.tick_top()
 
-def SHAP_force(clf,data,index,point,labels,label,type='bar'):
+def SHAP_force(clf,data,point,labels,label,type='bar',index=None): 
     import shap
 
     print('\n SHAP force plot')
 
-    X      = data.pd.iloc[index]
-    points = data.vtk.points[index]
+    if (index is None):
+        X      = data.pd
+        points = data.vtk.points
+    else:
+        X      = data.pd.iloc[index]  #index is array to index data with. i.e. if only sampling from test/train data
+        points = data.vtk.points[index]
 
+    # Extract the classifier object from the clf multilearn object
+    index = labels.to_list().index(label)
+    clf = clf.classifiers_[index]
+    clf.verbose = False #Turn verbose off after this to tidy prints
+    explainer = shap.TreeExplainer(clf)
+
+    # Find the closest datapoint to "point", and create SHAP explainer for that datapoint
     dist = points-point
     dist = np.sqrt(dist[:,0]**2.0 + dist[:,1]**2.0 + dist[:,2]**2.0)
     loc = np.argmin(dist)
@@ -242,12 +253,6 @@ def SHAP_force(clf,data,index,point,labels,label,type='bar'):
     print('point = ', point)
     print('nearest point = ',points[loc,:])
     print('distance = ',dist[loc])
-
-    # Extract the classifier object from the clf multilearn object
-    index = labels.to_list().index(label)
-    clf = clf.classifiers_[index]
-    clf.verbose = False #Turn verbose off after this to tidy prints
-    explainer = shap.TreeExplainer(clf)
 
     datapoint = X.iloc[loc]
     shap_value = explainer.shap_values(datapoint) # Calculate shap values
@@ -264,3 +269,114 @@ def SHAP_force(clf,data,index,point,labels,label,type='bar'):
         ax.set_yticks(y_pos)
         ax.set_yticklabels(X.columns[sort_ind])
         ax.set_xlabel('SHAP value')
+
+
+def viz_tree(clf,Xdata,Ydata,label,outfile,point=None):
+    from dtreeviz.trees import dtreeviz
+    from sklearn.tree import export_graphviz
+
+    X      = Xdata.pd
+    Y      = Ydata.pd
+    X_headers = X.columns
+    Y_headers = Y.columns
+
+    # If "point" given as argument, find the closest datapoint to "point", will do treewalk for this observation
+    if(point is not None):
+        points = Xdata.vtk.points
+        dist = points-point
+        dist = np.sqrt(dist[:,0]**2.0 + dist[:,1]**2.0 + dist[:,2]**2.0)
+        loc = np.argmin(dist)
+
+        print('point = ', point)
+        print('nearest point = ',points[loc,:])
+        print('distance = ',dist[loc])
+
+        datapoint = X.iloc[loc]
+    else:
+        datapoint = None
+
+    # Extract the classifier object from the clf multilearn object
+    index = Y_headers.to_list().index(label)
+    clf = clf.classifiers_[index]
+
+    # TODO: check if clf is a decision tree
+
+    viz = dtreeviz(clf, X, Y[label],
+              feature_names=X_headers,
+              target_name=label,class_names=["False","True"],X=datapoint)
+
+    viz.save(outfile)
+
+def viz_tree_simple(clf,label,features,labels,outfile):
+    import graphviz
+    from sklearn.tree import export_graphviz
+
+    # Extract the classifier object from the clf multilearn object
+    index = labels.to_list().index(label)
+    clf = clf.classifiers_[index]
+
+    # TODO: check if clf is a decision tree
+
+    dot_data = export_graphviz(clf,feature_names=features,filled=True,rounded=True,special_characters=True,proportion=True)
+    graph = graphviz.Source(dot_data)
+    graph.render(outfile)
+
+def decision_surface(clf,Xdata,Ydata,label,feature_pair,point,valrange):
+    from mlxtend.plotting import plot_decision_regions
+
+    print('\nPlotting decision surface for ' + feature_pair[0] + ' and ' + feature_pair[1])
+
+    X = Xdata.pd
+    Y = Ydata.pd
+    X_headers = X.columns
+    Y_headers = Y.columns
+
+    # Extract the classifier object from the clf multilearn object
+    index = Y_headers.to_list().index(label)
+    clf = clf.classifiers_[index]
+    clf.verbose = False
+    
+    # Get indexes of X_headers that correspond to the features in feature_pair
+    features = [index for index, item in enumerate(X_headers.to_list()) if item in feature_pair]
+
+    # Find nearest point to "point". Feature values from this index will be used to set filler_feature_values for later
+    points = Xdata.vtk.points
+    dist = points-point
+    dist = np.sqrt(dist[:,0]**2.0 + dist[:,1]**2.0 + dist[:,2]**2.0)
+    loc = np.argmin(dist)
+
+    print('point = ', point)
+    print('nearest point = ',points[loc,:])
+    print('distance = ',dist[loc])
+
+    datapoint = X.iloc[loc]
+
+    # Create dict objects containing values (and ranges) for all features NOT in feature_pair
+    keys = [index for index, item in enumerate(X_headers.to_list()) if item not in feature_pair]
+    values = X[X_headers[keys]]
+    ranges = np.maximum(1e-12,np.abs(np.max(values,axis=0)-np.min(values,axis=0))*valrange)
+    values = values.iloc[loc]
+    filler_feature_values = {k: v for k, v in zip(keys, values)}
+    filler_feature_ranges = {k: v for k, v in zip(keys, ranges)}
+    
+    print('values of other features:\n', filler_feature_values)
+    print('ranges of other features:\n', filler_feature_ranges)
+
+    # Plotting decision regions
+    fig, ax = plt.subplots()
+
+    X = X.to_numpy()
+    Y = Y[label].to_numpy()
+    plot_decision_regions(X, Y, clf=clf, feature_index=features,
+                          filler_feature_values=filler_feature_values,filler_feature_ranges=filler_feature_ranges,
+                          legend=0, ax=ax)
+    ax.set_xlabel(X_headers[features[0]]) 
+    ax.set_ylabel(X_headers[features[1]]) 
+
+    ax.set_xlim([np.min(X[:,features[0]]),np.max(X[:,features[0]])])
+    ax.set_ylim([np.min(X[:,features[1]]),np.max(X[:,features[1]])])
+    
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles, ['False', 'True'])
+    #ax.set_title('Feature 3 = {}'.format(value))
+    

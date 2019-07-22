@@ -251,8 +251,10 @@ def make_features(rans_vtk):
     #######################################
     print('3: Turbulence Reynolds number')
     nu = rans_dsa.PointData['mu_l']/rans_dsa.PointData['ro']
-    q3 = (algs.sqrt(tke)*rans_dsa.PointData['d'])/(50.0*nu)
-    q[:,feat] = algs.apply_dfunc(np.minimum, q3, 2.0)
+    Red = (algs.sqrt(tke)*rans_dsa.PointData['d'])/(50.0*nu)
+    q[:,feat] = algs.apply_dfunc(np.minimum, Red, 2.0)
+    #Red = 0.09**0.25*algs.sqrt(tke)*rans_dsa.PointData['d']/nu
+    #q[:,feat] = algs.apply_dfunc(np.minimum, Red, 100.0)
     feature_labels[feat] = 'Turbulence Re'
     feat += 1
     
