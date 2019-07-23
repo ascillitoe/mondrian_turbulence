@@ -148,44 +148,24 @@ def netcdf_to_vtk(cdffile,cdfscalars,vtkscalars):
 
     return vtk_obj
 
-def search_les_fields(vtk,hasw=False,hasro=False):
-    # required arrays: ro,U,V,W,p,uu,vv,ww,uv,uw,vw
-    mydict = {}
-    mydict['U']  = ['mean_u_xyz','avgUx']
-    mydict['V']  = ['mean_v_xyz','avgUy']
-    mydict['p']  = ['mean_p_xyz','avgP']
-    mydict['uu'] = ['reynolds_stress_uu_xyz','UU']
-    mydict['vv'] = ['reynolds_stress_vv_xyz','VV']
-    mydict['ww'] = ['reynolds_stress_ww_xyz','WW']
-    mydict['uv'] = ['reynolds_stress_uv_xyz','UV']
-    mydict['uw'] = ['reynolds_stress_uw_xyz','UW']
-    mydict['vw'] = ['reynolds_stress_vw_xyz','VW']
+def convert_hifi_fields(vtk,arraynames):
 
-    if(hasw==True):
-        mydict['W']  = ['mean_w_xyz','avgUz']
-    else:
-        vtk.point_arrays['W'] = np.zeros(vtk.number_of_points)
+    nnode = vtk.number_of_points
 
-    if(hasro==True):
-        mydict['ro']  = ['mean_ro_xyz','Density']
-    else:
-        vtk.point_arrays['ro'] = np.ones(vtk.number_of_points)
+    # Rename arrays according ot arraynames dict
+    for array in arraynames:
 
-    scalars = vtk.scalar_names
-    print('\nSearching in vtk object to find desired scalar fields')
-    print('Current scalars: ' + str(scalars))
-    print('Searching for: ' + str(list(mydict.keys())))
+        # If arraynames[array] is a string, rename
+        if isinstance(arraynames[array],str): 
+            vtk.rename_scalar(arraynames[array],array)
 
-
-    for want in mydict.keys():
-        if(want not in scalars): 
-            possible = mydict[want]
-            scalar = find_scalar(want,scalars,possible)
-            vtk.rename_scalar(scalar,want)
+# Otherwise initialise scalar array to the value stored in arraynames[array]
+        else:
+            vtk.point_arrays[array] = np.ones(nnode)*arraynames[array]
 
     return vtk
 
-def search_rans_fields(vtk,comp=False):
+def convert_rans_fields(vtk,comp=False):
     # required arrays: ro,U,p,k,w,mu_l,mu_t,d
     mydict = {}
 
@@ -204,9 +184,9 @@ def search_rans_fields(vtk,comp=False):
         vtk.point_arrays['ro'] = np.ones(vtk.number_of_points)
 
     scalars = vtk.scalar_names
-    print('\nSearching in vtk object to find desired scalar fields')
-    print('Current scalars: ' + str(scalars))
-    print('Searching for: ' + str(list(mydict.keys())))
+    #print('\nSearching in vtk object to find desired scalar fields')
+    #print('Current scalars: ' + str(scalars))
+    #print('Searching for: ' + str(list(mydict.keys())))
 
     for want in mydict.keys():
         if(want not in scalars): 
@@ -232,6 +212,6 @@ def find_scalar(want,list,possible):
         quit(quitstr)
     else:
         found = found[0]
-        print('Found scalar field ' + want + ', called ' + str(found) + '. Renaming...')
+        #print('Found scalar field ' + want + ', called ' + str(found) + '. Renaming...')
     return found
 

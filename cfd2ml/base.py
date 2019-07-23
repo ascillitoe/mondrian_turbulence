@@ -53,43 +53,13 @@ class CaseData:
 
         mydict = {'name':self.name}
 
-        if(self.vtk is not None):
-            self.vtkfile = os.path.abspath(os.path.join(fileloc,self.name + '.vtk'))
-            self.WriteVTK(self.vtkfile)
-
-        
-#        if(self.vtk is not None and self.vtkfile is None): #If vtk data, but no vtkfile, then the data is new so write a vtkfile 
-#            self.vtkfile = os.path.abspath(os.path.join(fileloc,self.name + '.vtk'))
-#            self.WriteVTK(self.vtkfile)
-#        elif(self.vtk is not None and self.vtkfile is not None): #if vtk data and file, still check if the vtk grid has been modified (e.g. clipped etc), or new arrays. If yes write a new file.
-# THIS IS ALL TOO COMPLICATED... SIMPLIFY!            
-#            oldnnode = vista.read(self.vtkfile).number_of_points
-#            newnnode = self.vtk.number_of_points
-#            oldnarray = vista.read(self.vtkfile).n_scalars
-#            newnarray = self.vtk.n_scalars
-#            if (newnnode != oldnnode):
-#                file = os.path.split(self.vtkfile)
-#                self.vtkfile = os.path.abspath(os.path.join(file[0],'new_' + file[1]))
-#                print('\nNumber of nodes in vtk grid has changed, writing a modified vtk file: ' + self.vtkfile)
-#                print('Old nnode = ', oldnnode)
-#                print('New nnode = ', newnnode)
-#                self.WriteVTK(self.vtkfile)
-#            elif(newnarray!=oldnarray):
-#                file = os.path.split(self.vtkfile)
-#                self.vtkfile = os.path.abspath(os.path.join(file[0],'new_' + file[1]))
-#                print('\nNumber of arrays in vtk data has changed, writing a modified vtk file: ' + self.vtkfile)
-#                print('Old narray = ', oldnarray)
-#                print('New narray = ', newnarray)
-#                self.WriteVTK(self.vtkfile)
-
-        if(self.pd is not None and self.csvfile is None):
-            self.csvfile = os.path.abspath(os.path.join(fileloc,self.name + '.csv'))
-            self.WritePandas(self.csvfile)
+        self.vtkfile = os.path.abspath(os.path.join(fileloc,self.name + '.vtk'))
+        self.WriteVTK(self.vtkfile)
+        self.csvfile = os.path.abspath(os.path.join(fileloc,self.name + '.csv'))
+        self.WritePandas(self.csvfile)
 
         mydict['vtk file'] = self.vtkfile 
         mydict['csv file'] = self.csvfile
-
-        print(mydict)
         output = open(filename, 'wb')
         pickle.dump(mydict, output) 
         output.close()
@@ -101,19 +71,11 @@ class CaseData:
         mydict = pickle.load(pkl_file)
         pkl_file.close()
 
-        print(mydict)
-
         self.name    = mydict.get('name')
         self.vtkfile = mydict.get('vtk file')
         self.csvfile = mydict.get('csv file')
 
         print('Name of CaseData object: ' + self.name)
 
-        if(self.vtkfile is not None):
-            self.ReadVTK(self.vtkfile)
-
-        if(self.csvfile is not None):
-            self.ReadPandas(self.csvfile)
-
-        self.vtkfile = os.path.abspath(self.vtkfile)
-        self.csvfile = os.path.abspath(self.csvfile)
+        self.ReadVTK(self.vtkfile)
+        self.ReadPandas(self.csvfile)

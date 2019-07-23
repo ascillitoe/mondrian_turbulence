@@ -6,11 +6,11 @@ import os
 import vista
 from vtk.numpy_interface import algorithms as algs
 
-from cfd2ml.base import CaseData
+#from cfd2ml.base import CaseData
 from cfd2ml.utilities import build_cevm
 
-def preproc_RANS_and_LES(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_max=[1e99,1e99,1e99],plot=False,debug=False,solver='incomp'):
-    
+def preproc_RANS_and_HiFi(q_data, e_data, clip=None,comp=False):
+   
     #################################
     # Initial processing of RANS data
     #################################
@@ -32,23 +32,26 @@ def preproc_RANS_and_LES(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_ma
     rans_nnode = rans_vtk.number_of_points
     
     # Clip mesh to given ranges
-    print('Clipping mesh to range: ', xclip_min, ' to ', xclip_max)
-    rans_vtk = rans_vtk.clip(normal='x', origin=xclip_min,invert=False)
-    rans_vtk = rans_vtk.clip(normal='x', origin=xclip_max,invert=True )
-    rans_vtk = rans_vtk.clip(normal='y', origin=xclip_min,invert=False)
-    rans_vtk = rans_vtk.clip(normal='y', origin=xclip_max,invert=True )
-    rans_vtk = rans_vtk.clip(normal='z', origin=xclip_min,invert=False)
-    rans_vtk = rans_vtk.clip(normal='z', origin=xclip_max,invert=True )
-    print('Number of nodes clipped = ', rans_nnode - rans_vtk.number_of_points)
-    
+    if (clip is not None):
+        xclip_min = clip[0:3]
+        xclip_max = clip[3:6]
+        print('Clipping mesh to range: ', xclip_min, ' to ', xclip_max)
+        rans_vtk = rans_vtk.clip(normal='x', origin=xclip_min,invert=False)
+        rans_vtk = rans_vtk.clip(normal='x', origin=xclip_max,invert=True )
+        rans_vtk = rans_vtk.clip(normal='y', origin=xclip_min,invert=False)
+        rans_vtk = rans_vtk.clip(normal='y', origin=xclip_max,invert=True )
+        rans_vtk = rans_vtk.clip(normal='z', origin=xclip_min,invert=False)
+        rans_vtk = rans_vtk.clip(normal='z', origin=xclip_max,invert=True )
+        print('Number of nodes clipped = ', rans_nnode - rans_vtk.number_of_points)
+
     rans_nnode = rans_vtk.number_of_points
     rans_ncell = rans_vtk.number_of_cells
     print('New number of nodes = ', rans_nnode)
     print('New number of cells = ', rans_ncell)
     
-    # Initial processing of LES data
+    # Initial processing of HiFi data
     ################################
-    print('\nInitial processing of LES data')
+    print('\nInitial processing of HiFi data')
     
     les_vtk = e_data.vtk
     
@@ -71,9 +74,9 @@ def preproc_RANS_and_LES(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_ma
     rans_vtk.point_arrays['q'] = q
     
     ############################
-    # Generate LES error metrics
+    # Generate HiFi error metrics
     ############################
-    print('\nProcessing LES data into error metrics')
+    print('\nProcessing HiFi data into error metrics')
     print(  '--------------------------------------')
 
     e_raw, e_bool, error_labels = make_errors(les_vtk)
@@ -83,14 +86,14 @@ def preproc_RANS_and_LES(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_ma
     les_vtk.point_arrays['boolean'] = e_bool
      
     #####################################
-    # Interpolate LES data onto RANS mesh (do after metrics are generated so Sij etc from fine mesh)
+    # Interpolate HiFi data onto RANS mesh (do after metrics are generated so Sij etc from fine mesh)
     #####################################
-    print('Interpolating LES data onto RANS mesh')
+    print('Interpolating HiFi data onto RANS mesh')
     les_vtk = rans_vtk.sample(les_vtk,pass_point_arrays=False)
     les_nnode = les_vtk.number_of_points
     les_ncell = les_vtk.number_of_cells
     
-    # Check nnode and nncell for LES and RANS now match
+    # Check nnode and nncell for HiFi and RANS now match
     if (rans_nnode!=les_nnode): quit('Warning: rans_nnode != les_nnode... Interpolation failed')
     if (rans_ncell!=les_ncell): quit('Warning: rans_ncell != les_ncell... Interpolation failed')
 
@@ -109,26 +112,11 @@ def preproc_RANS_and_LES(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_ma
     print('Finished pre-processing')
     print('-----------------------')
     
-    #####################
-    # Plot stuff to check
-    #####################
-    if (plot):
-        print('\n Plotting...')
-        plotter = vista.Plotter()
-        sargs = dict(interactive=True,height=0.25,title_font_size=12, label_font_size=11,shadow=True, n_labels=5, italic=True, fmt='%.1f',font_family='arial',vertical=False)
-        rans_vtk.point_arrays['plot'] = q3
-        clims = [np.min(q3), np.max(q3)]
-        print(clims)
-        plotter.add_mesh(rans_vtk,scalars='plot',rng=clims,scalar_bar_args=sargs)
-        plotter.view_xy()
-        #plotter.add_mesh(data2,scalars=J2[:,1,0],show_scalar_bar=True,scalar_bar_args=sargs,rng=[-100,100]) #can plot np array directly but colour bar doesn't work...
-        plotter.show()
-       
     return q_data, e_data
 
 
-def preproc_RANS(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_max=[1e99,1e99,1e99],debug=False,solver='incomp'):
-   
+def preproc_RANS(q_data, e_data, clip=None, comp=False):
+
     ###################
     # Read in RANS data
     ###################
@@ -150,14 +138,17 @@ def preproc_RANS(q_data, e_data, xclip_min=[-1e99,-1e99,-1e99], xclip_max=[1e99,
     rans_nnode = rans_vtk.number_of_points
     
     # Clip mesh to given ranges
-    print('Clipping mesh to range: ', xclip_min, ' to ', xclip_max)
-    rans_vtk = rans_vtk.clip(normal='x', origin=xclip_min,invert=False)
-    rans_vtk = rans_vtk.clip(normal='x', origin=xclip_max,invert=True )
-    rans_vtk = rans_vtk.clip(normal='y', origin=xclip_min,invert=False)
-    rans_vtk = rans_vtk.clip(normal='y', origin=xclip_max,invert=True )
-    rans_vtk = rans_vtk.clip(normal='z', origin=xclip_min,invert=False)
-    rans_vtk = rans_vtk.clip(normal='z', origin=xclip_max,invert=True )
-    print('Number of nodes clipped = ', rans_nnode - rans_vtk.number_of_points)
+    if (clip is not None):
+        xclip_min = clip[0:3]
+        xclip_max = clip[3:6]
+        print('Clipping mesh to range: ', xclip_min, ' to ', xclip_max)
+        rans_vtk = rans_vtk.clip(normal='x', origin=xclip_min,invert=False)
+        rans_vtk = rans_vtk.clip(normal='x', origin=xclip_max,invert=True )
+        rans_vtk = rans_vtk.clip(normal='y', origin=xclip_min,invert=False)
+        rans_vtk = rans_vtk.clip(normal='y', origin=xclip_max,invert=True )
+        rans_vtk = rans_vtk.clip(normal='z', origin=xclip_min,invert=False)
+        rans_vtk = rans_vtk.clip(normal='z', origin=xclip_max,invert=True )
+        print('Number of nodes clipped = ', rans_nnode - rans_vtk.number_of_points)
     
     rans_nnode = rans_vtk.number_of_points
     rans_ncell = rans_vtk.number_of_cells
@@ -426,7 +417,7 @@ def make_errors(les_vtk):
     les_dsa = dsa.WrapDataObject(les_vtk)
 
     print('Error metric:')
-    nerr = 3
+    nerr = 2
     err = 0
     e_raw  = np.zeros([les_nnode,nerr])
     e_bool = np.zeros([les_nnode,nerr],dtype=int)
@@ -505,43 +496,61 @@ def make_errors(les_vtk):
     error_labels[err] = 'Stress anisotropy'
     err += 1
     
-    # Error metric 3: Non-linearity
-    ###############################
-    print('3: Non-linearity')
-    
-    # Build cevm equation in form A*nut**3 + B*nut**2 + C*nut + D = 0
-    B, A = build_cevm(Sij,Oij)
-    B = B/(tke      +1e-12)
-    A = A/(tke**2.0 +1e-12)
-    
-    C = np.zeros_like(A)
-    D = np.zeros_like(A)
-    for i in range(0,3):
-        for j in range(0,3):
-            C += -2.0*Sij[:,i,j]*Sij[:,i,j]
-            D += (2.0/3.0)*tke*Sij[:,i,j]*delij[:,i,j] - uiuj[:,i,j]*Sij[:,i,j]
-    
-    nu_t_cevm = np.empty_like(nu_t)
-    for i in tqdm(range(0,les_nnode)):
-        # Find the roots of the cubic equation (i.e. potential values for nu_t_cevm)
-        roots = np.roots([A[i],B[i],C[i],D[i]])
-        roots_orig = roots
-    
-        # Remove complex solutions (with imaginary part > a small number, to allow for numerical error)
-        #roots = roots.real[abs(roots.imag)<1e-5]  #NOTE - Matches nu_t much better without this?!
-    
-        # Out of remaining solutions(s), pick one that is closest to linear nu_t
-        if(roots.size==0):
-            nu_t_cevm[i] = nu_t[i]
-        else:
-            nu_t_cevm[i] = roots.real[np.argmin( np.abs(roots - np.full(roots.size,nu_t[i])) )]
-    
-    normdiff = algs.abs(nu_t_cevm - nu_t) / (algs.abs(nu_t_cevm) + algs.abs(nu_t) + 1e-12)
-    e_raw[:,err] = nu_t_cevm
-    
-    index = algs.where(normdiff>0.15)
-    e_bool[index,err] = 1
-    error_labels[err] = 'Non-linearity'
-    err += 1
+#    # Error metric 3: Non-linearity
+#    ###############################
+#    print('3: Non-linearity')
+#    
+#    # Build cevm equation in form A*nut**3 + B*nut**2 + C*nut + D = 0
+#    B, A = build_cevm(Sij,Oij)
+#    B = B/(tke      +1e-12)
+#    A = A/(tke**2.0 +1e-12)
+#    
+#    C = np.zeros_like(A)
+#    D = np.zeros_like(A)
+#    for i in range(0,3):
+#        for j in range(0,3):
+#            C += -2.0*Sij[:,i,j]*Sij[:,i,j]
+#            D += (2.0/3.0)*tke*Sij[:,i,j]*delij[:,i,j] - uiuj[:,i,j]*Sij[:,i,j]
+#    
+#    nu_t_cevm = np.empty_like(nu_t)
+#    for i in tqdm(range(0,les_nnode)):
+#        # Find the roots of the cubic equation (i.e. potential values for nu_t_cevm)
+#        roots = np.roots([A[i],B[i],C[i],D[i]])
+#        roots_orig = roots
+#    
+#        # Remove complex solutions (with imaginary part > a small number, to allow for numerical error)
+#        #roots = roots.real[abs(roots.imag)<1e-5]  #NOTE - Matches nu_t much better without this?!
+#    
+#        # Out of remaining solutions(s), pick one that is closest to linear nu_t
+#        if(roots.size==0):
+#            nu_t_cevm[i] = nu_t[i]
+#        else:
+#            nu_t_cevm[i] = roots.real[np.argmin( np.abs(roots - np.full(roots.size,nu_t[i])) )]
+#    
+#    normdiff = algs.abs(nu_t_cevm - nu_t) / (algs.abs(nu_t_cevm) + algs.abs(nu_t) + 1e-12)
+#    e_raw[:,err] = nu_t_cevm
+#    
+#    index = algs.where(normdiff>0.15)
+#    e_bool[index,err] = 1
+#    error_labels[err] = 'Non-linearity'
+#    err += 1
 
     return e_raw, e_bool, error_labels
+
+
+
+#    #####################
+#    # Plot stuff to check
+#    #####################
+#        print('\n Plotting...')
+#        plotter = vista.Plotter()
+#        sargs = dict(interactive=True,height=0.25,title_font_size=12, label_font_size=11,shadow=True, n_labels=5, italic=True, fmt='%.1f',font_family='arial',vertical=False)
+#        rans_vtk.point_arrays['plot'] = q3
+#        clims = [np.min(q3), np.max(q3)]
+#        print(clims)
+#        plotter.add_mesh(rans_vtk,scalars='plot',rng=clims,scalar_bar_args=sargs)
+#        plotter.view_xy()
+#        #plotter.add_mesh(data2,scalars=J2[:,1,0],show_scalar_bar=True,scalar_bar_args=sargs,rng=[-100,100]) #can plot np array directly but colour bar doesn't work...
+#        plotter.show()
+       
+
