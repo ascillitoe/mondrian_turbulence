@@ -20,12 +20,12 @@ class CaseData:
             self.name = name #otherwise init an empty CaseData object with self.name = name
 
     def ReadVTK(self,filename):
-        print("Reading vtk data from " + filename + " into CaseData called " + self.name)
+        print("Reading vtk data from " + filename)
         self.vtk     = vista.read(filename)
         self.vtkfile = os.path.abspath(filename)
 
     def ReadPandas(self,filename):
-        print("Reading csv data from " + filename + " into CaseData called " + self.name)
+        print("Reading csv data from " + filename)
         self.pd = pd.read_csv(filename)
         self.csvfile = os.path.abspath(filename)
 
@@ -47,20 +47,19 @@ class CaseData:
         print('Statistics of pandas data from ' + self.name + ' CaseData:')
         print(self.pd.describe())
 
-    def Write(self,fileloc='.'):
-        filename = os.path.join(fileloc,self.name + '.pkl')
-        print('Saving metadata for CaseData ' + self.name + ' to file ' + filename)
+    def Write(self,filename):
 
-        mydict = {'name':self.name}
-
-        self.vtkfile = os.path.abspath(os.path.join(fileloc,self.name + '.vtk'))
+        self.vtkfile = os.path.abspath(filename + '.vtk')
         self.WriteVTK(self.vtkfile)
-        self.csvfile = os.path.abspath(os.path.join(fileloc,self.name + '.csv'))
+        self.csvfile = os.path.abspath(filename + '.csv')
         self.WritePandas(self.csvfile)
 
+        mydict = {'name':self.name}
         mydict['vtk file'] = self.vtkfile 
         mydict['csv file'] = self.csvfile
-        output = open(filename, 'wb')
+
+        print('Saving metadata for CaseData ' + filename + '.pkl')
+        output = open(filename + '.pkl', 'wb')
         pickle.dump(mydict, output) 
         output.close()
 

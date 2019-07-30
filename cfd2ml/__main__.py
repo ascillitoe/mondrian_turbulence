@@ -16,13 +16,19 @@ def main():
     ########################
     # Pre-processing task
     if (task=='preproc'):
-        preproctype = json_dat['type'] 
-        if (preproctype==1):
+        type = json_dat['type'] 
+        if (type==1):
             preproc1(json_dat)
-        elif (preproctype==2):
+        elif (type==2):
             preproc2(json_dat)
-        elif (preproctype==3):
+        elif (type==3):
             preproc3(json_dat)
+
+    elif(task=='train'):
+        type = json_dat['type'] 
+        if (type=="classification"):
+            classify(json_dat)
+
 
 def preproc1(json):
     import os
@@ -47,8 +53,8 @@ def preproc1(json):
             options = case['options']
 
         # Read data
-        X_data = CaseData(id + '_X')
-        Y_data = CaseData(id + '_Y')
+        X_data = CaseData(name)
+        Y_data = CaseData(name)
         print('Reading X data from vtk file: ', RANSfile)
         X_data.ReadVTK(RANSfile)
         print('Reading Y data from vtk file: ', HiFifile)
@@ -62,8 +68,59 @@ def preproc1(json):
         X_data, Y_data = preproc_RANS_and_HiFi(X_data, Y_data, **options)
 
         # Write data
-        X_data.Write(fileloc=outdir) 
-        Y_data.Write(fileloc=outdir) 
+        X_data.Write(os.path.join(outdir, id + '_X')) 
+        Y_data.Write(os.path.join(outdir, id + '_Y'))
+
+
+def classify(json):
+    import os
+    from cfd2ml.base import CaseData
+    from cfd2ml.classify import RF_classifier
+    from joblib import dump
+    import pandas as pd
+
+    modelname  = json['save_model']
+    datloc     = json['training_data_location']
+    cases      = json['training_data_cases']
+    target     = json['classifier_target']
+
+    if (("options" in json)==True):
+        options    = json['options']
+    else: 
+        options = None
+
+    # Read data
+    X_data = pd.DataFrame()
+    Y_data = pd.DataFrame()
+
+    # Read in each data set, append into single X and Y df's to pass to classifier. 
+    # "group" identifier column is added to X_case to id what case the data came from. 
+    # (Used in LeaveOneGroupOut CV later)
+    caseno = 1
+    for case in cases:
+        # Read in RANS (X) data
+        filename = os.path.join(datloc,case+'_X.pkl')
+        X_case = CaseData(filename)
+
+        # Add "group" id column
+        X_case.pd['group'] = caseno
+        caseno += 1
+
+        # Read in HiFi (Y) data
+        filename = os.path.join(datloc,case+'_Y.pkl')
+        Y_case = CaseData(filename)
+
+        # Add X and Y data to df's
+        X_data = X_data.append(X_case.pd)
+        Y_data = Y_data.append(Y_case.pd)
+
+    # Train classifier
+    rf_clf =  RF_classifier(X_data,Y_data[target],options=options) 
+
+    # Save classifier
+    filename = modelname + '.joblib'
+    print('\nSaving classifer to ', filename)
+    dump(rf_clf, filename) 
 
 if __name__ == '__main__':
     main()
