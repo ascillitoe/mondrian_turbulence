@@ -71,13 +71,16 @@ def RF_classifier(X_data,Y_data,options=None):
         print('\nUsing 5-fold cross validation')
         cv = 5
 
-    # Define scoring (what is best for imbalanced classification?)
-    scoring = None
-
+   
     #########################
     # Training the classifier
     #########################
+    # TODO TODO TODO - improve accuracy by using balanced or weighted random forest
+    # (see https://statistics.berkeley.edu/sites/default/files/tech-reports/666.pdf)
     if(gridsearch==True):
+        # Define scoring to maximise when searching for optimal hyperparameters
+        scoring = 'f1' #TODO- use balanced accuracy or f1 here?
+
         # Optimal hyperparameters found with GridSearchCV
         print('\n Performing GridSearchCV to find optimal hyperparameters for random forest classifier')
         clf = RandomForestClassifier()
@@ -102,18 +105,39 @@ def RF_classifier(X_data,Y_data,options=None):
 
         # Cross validation accuracy metrics
         if(accuracy==True):
+            # Define scoring metrics to measure during cross validation
+            scoring = ['f1','accuracy','balanced_accuracy']
+
             print('\nPerforming cross validation to determine train and test accuracy/error')
             cv_results = cross_validate(clf,X_train,Y_train,cv=cv,return_train_score=True,scoring=scoring,verbose=1,n_jobs=-1)
 
-            train_scores = cv_results['train_score']
-            test_scores  = cv_results['test_score']
+            train_f1 = cv_results['train_f1']
+            test_f1  = cv_results['test_f1']
+            train_A = cv_results['train_accuracy']
+            test_A  = cv_results['test_accuracy']
+            train_BA = cv_results['train_balanced_accuracy']
+            test_BA  = cv_results['test_balanced_accuracy']
 
-            print(train_scores)
-            print(test_scores)
+            train_TE = 1.0 - train_A
+            test_TE  = 1.0 - test_A
+            train_CAE = 1.0 - train_BA
+            test_CAE  = 1.0 - test_BA
 
-            print(np.mean(train_scores))    
-            print(np.mean(test_scores))    
+            print('\nTraining scores:')
+            print('F1 score = %.2f %%' %(np.mean(train_f1)*100) )
+            print('Total error = %.2f %%' %(np.mean(train_TE)*100) )
+            print('Per-class error = %.2f %%' %(np.mean(train_CAE)*100) )
+     
+            print('\nValidation scores:')
+            print('F1 score = %.2f %%' %(np.mean(test_f1)*100) )
+            print('Total error = %.2f %%' %(np.mean(test_TE)*100) )
+            print('Per-class error = %.2f %%' %(np.mean(test_CAE)*100) )
 
+        #TODO - precision-recall curves to decide threshold
+        #TODO - Need to add X_train, X_test, Y_train, Y_test = train_test_split(q_dataset[X_headers], e_dataset[Y_headers],train_size=train_percentage,random_state=random_state) again,
+        #       in order to use test data for pr curves? Or can build into CV?
+        #TODO - capability to decide on probablity threshold, and predict with chosen threshold
+        # See https://stackoverflow.com/questions/29656550/how-to-plot-pr-curve-over-10-folds-of-cross-validation-in-scikit-learn
 #
 #
 #    else:
