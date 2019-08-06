@@ -14,7 +14,10 @@ def RF_classifier(X_data,Y_data,options=None):
     # Parse user options
     ####################
     params = None
-    gridsearch = False
+    gridsearch   = False
+    GS_settings  = None
+    randomsearch = False
+    RS_settings  = None
     accuracy = False
     cv_type = 'logo'
     scoring = 'f1'
@@ -27,8 +30,18 @@ def RF_classifier(X_data,Y_data,options=None):
         if (("grid_search" in options)==True):
             from sklearn.model_selection import GridSearchCV
             gridsearch = True
-            gridsearch_opts = options['grid_search']
-            gridsearch_params = gridsearch_opts['parameter_grid']
+            GS_params   = options['grid_search']['parameter_grid']
+            if (("settings" in options['grid_search'])==True): GS_settings = options['grid_search']['settings'] 
+
+        if (("random_search" in options)==True):
+            from sklearn.model_selection import RandomizedSearchCV
+            from cfd2ml.utilities import convert_param_dist
+            randomsearch = True
+            RS_params, RS_Nmax   = convert_param_dist(options['random_search']['parameter_grid'])
+            print('RS_Nmax = ', RS_Nmax)
+            if (("settings" in options['random_search'])==True): RS_settings = options['random_search']['settings'] 
+
+        if(randomsearch==True and gridsearch==True): quit('********** Stopping! grid_search and random_search both set *********')
 
         if (("accuracy" in options)==True):
             accuracy = True
@@ -38,6 +51,9 @@ def RF_classifier(X_data,Y_data,options=None):
 
         if (("scoring" in options)==True):
             scoring = options['scoring']
+
+        if (("cv_type" in options)==True):
+            cv_type = options['cv_type']
 
     ##############
     # Prepare data
@@ -65,9 +81,10 @@ def RF_classifier(X_data,Y_data,options=None):
         ngroup = logo.get_n_splits(groups=groups)
         print('\nUsing Leave-One-Group-Out cross validation on ', ngroup, ' groups')
     elif(cv_type=='kfold'):
-        from sklearn.model_selection import kfold
+        from sklearn.model_selection import StratifiedKFold
         print('\nUsing 5-fold cross validation')
-        cv = 5
+        k_fold = StratifiedKFold(n_splits=10, random_state=42,shuffle=True)
+        cv = k_fold.split(X_data,Y_data)
 
     #########################
     # Training the classifier
@@ -75,16 +92,41 @@ def RF_classifier(X_data,Y_data,options=None):
     # TODO TODO TODO - improve accuracy by using balanced or weighted random forest
     # (see https://statistics.berkeley.edu/sites/default/files/tech-reports/666.pdf)
     if(gridsearch==True):
-        # Optimal hyperparameters found with GridSearchCV
+        # Finding optimal hyperparameters with GridSearchCV
         print('\n Performing GridSearchCV to find optimal hyperparameters for random forest classifier')
-        clf = RandomForestClassifier()
+        clf = RandomForestClassifier(random_state=42)
         if (cv_type=='logo'): cv = logo.split(X_data,Y_data,groups)
-        GS_clf = GridSearchCV(estimator=clf,param_grid=gridsearch_params, cv=cv, scoring=scoring, n_jobs=-1, iid=False, verbose=1)
+        GS_clf = GridSearchCV(estimator=clf,param_grid=GS_params, cv=cv, scoring=scoring, iid=False, verbose=2, **GS_settings)
         GS_clf.fit(X_data,Y_data)
-        
+
+        # Write out results to file
+        scores_df = pd.DataFrame(GS_clf.cv_results_)#.sort_values(by='rank_test_score')
+        scores_df.to_csv('GridSearch_results.csv')
+
+        # Pich out best results
         best_params = GS_clf.best_params_
         best_score  = GS_clf.best_score_
         clf = GS_clf.best_estimator_  # (this clf has been fit to all of the X_data,Y_data)
+
+        print('\nBest hyperparameters found:', best_params)
+        print('\nScore with these hyperparameters:', best_score)
+
+    elif(randomsearch==True):
+        # Finding optimal hyperparameters with RandomSearchCV
+        print('\n Performing RandomizedSearchCV to find optimal hyperparameters for random forest classifier')
+        clf = RandomForestClassifier(random_state=42)
+        if (cv_type=='logo'): cv = logo.split(X_data,Y_data,groups)
+        RS_clf = RandomizedSearchCV(estimator=clf,param_distributions=RS_params, cv=cv, scoring=scoring,iid=False, verbose=2, error_score=np.nan, **RS_settings)
+        RS_clf.fit(X_data,Y_data)
+        
+        # Write out results to file
+        scores_df = pd.DataFrame(RS_clf.cv_results_)#.sort_values(by='rank_test_score')
+        scores_df.to_csv('RandomSearch_results.csv')
+
+        # Pick out best results
+        best_params = RS_clf.best_params_
+        best_score  = RS_clf.best_score_
+        clf = RS_clf.best_estimator_  # (this clf has been fit to all of the X_data,Y_data)
 
         print('\nBest hyperparameters found:', best_params)
         print('\nScore with these hyperparameters:', best_score)
@@ -106,8 +148,7 @@ def RF_classifier(X_data,Y_data,options=None):
         if (cv_type=='logo'): 
             cv = logo.split(X_data,Y_data,groups)
         elif(cv_type=='kfold'):
-            k_fold = KFold(n_splits=cv)
-            k_fold.split(X_data)
+            cv = k_fold.split(X_data,Y_data)  # Need to regen "Generator" object
 
         fig1, ax1 = plt.subplots()
 
@@ -190,6 +231,7 @@ def RF_classifier(X_data,Y_data,options=None):
         print('Total error = %.2f %%' %(np.mean(test_TE)*100) )
         print('Per-class error = %.2f %%' %(np.mean(test_CAE)*100) )
 
+        
         # Average precision-recall over folds, and plot curves
         y_real = np.concatenate(y_real)
         y_proba = np.concatenate(y_proba)
@@ -200,8 +242,6 @@ def RF_classifier(X_data,Y_data,options=None):
         ax1.set_ylabel('Precision')
         ax1.legend(loc='lower left', fontsize='small')
         
-
-# TODO - Training and validation error versus hyper-parameters if gridsearch
 
         plt.show()
 

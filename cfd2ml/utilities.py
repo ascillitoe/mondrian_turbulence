@@ -215,3 +215,33 @@ def find_scalar(want,list,possible):
         #print('Found scalar field ' + want + ', called ' + str(found) + '. Renaming...')
     return found
 
+
+def convert_param_dist(json_dist):
+    from scipy.stats import randint as sp_randint
+    import numpy as np
+
+    param_dist = {}
+    Nparams = []
+
+    for param in json_dist:
+        value = json_dist[param]
+
+        # If param item a list then this contains low and high values for sp_randint
+        if isinstance(value,list):
+            low  = value[0]
+            high = value[1]
+            param_dist[param] = sp_randint(low,high)        
+
+            Nparams.append(high-low)  #assuming only integer params for now!
+
+        # Else set param as a single value
+        else:
+            param_dist[param] = [value,]
+
+            Nparams.append(1)
+
+
+        Nmax = np.prod(Nparams)
+
+    return param_dist, Nmax
+

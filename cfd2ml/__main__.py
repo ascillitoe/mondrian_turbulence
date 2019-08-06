@@ -36,6 +36,11 @@ def preproc1(json):
     from cfd2ml.preproc import preproc_RANS_and_HiFi
     from cfd2ml.utilities import convert_rans_fields, convert_hifi_fields
 
+    print('\n-----------------------')
+    print('Started pre-processing')
+    print('Type 1')
+    print('-----------------------')
+
     # Create output dir if needed
     outdir = json['Output directory']
     os.makedirs(outdir, exist_ok=True)
@@ -44,6 +49,10 @@ def preproc1(json):
     for case in json['Cases']:
         id = case['Case ID']
         name = case['Name']
+
+        print('\n**********************************************')
+        print('Case %s: %s' %(id,name) )
+        print('**********************************************')
 
         RANSfile = case['RANS file']
         HiFifile = case['HiFi file']
@@ -55,6 +64,7 @@ def preproc1(json):
         # Read data
         X_data = CaseData(name)
         Y_data = CaseData(name)
+
         print('Reading X data from vtk file: ', RANSfile)
         X_data.ReadVTK(RANSfile)
         print('Reading Y data from vtk file: ', HiFifile)
@@ -71,6 +81,11 @@ def preproc1(json):
         X_data.Write(os.path.join(outdir, id + '_X')) 
         Y_data.Write(os.path.join(outdir, id + '_Y'))
 
+    print('\n-----------------------')
+    print('Finished pre-processing')
+    print('-----------------------')
+
+
 
 def classify(json):
     import os
@@ -78,6 +93,7 @@ def classify(json):
     from cfd2ml.classify import RF_classifier
     from joblib import dump
     import pandas as pd
+    import numpy as np
 
     modelname  = json['save_model']
     datloc     = json['training_data_location']
@@ -86,8 +102,11 @@ def classify(json):
 
     if (("options" in json)==True):
         options    = json['options']
+        if(("sample" in options)==True):
+            sample = options['sample']
     else: 
         options = None
+        sample  = None
 
     # Read data
     X_data = pd.DataFrame()
@@ -111,8 +130,18 @@ def classify(json):
         Y_case = CaseData(filename)
 
         # Add X and Y data to df's
-        X_data = X_data.append(X_case.pd)
-        Y_data = Y_data.append(Y_case.pd)
+        X_data = X_data.append(X_case.pd,ignore_index=True)
+        Y_data = Y_data.append(Y_case.pd,ignore_index=True)
+
+    # Randomly sample a % of the data
+    nrows = X_data.shape[0]
+    print('Original number of rows in dataset: = ', nrows)
+    if(sample is not None):
+        index = np.random.choice(X_data.index,int(sample*nrows))
+        X_data = X_data.iloc[index]
+        Y_data = Y_data.iloc[index]
+        nrows = len(X_data.index)
+        print('Number of rows in dataset after sampling: = ', nrows)
 
     # Train classifier
     rf_clf =  RF_classifier(X_data,Y_data[target],options=options) 

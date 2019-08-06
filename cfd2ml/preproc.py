@@ -94,24 +94,37 @@ def preproc_RANS_and_HiFi(q_data, e_data, clip=None,comp=False):
     les_ncell = les_vtk.number_of_cells
     
     # Check nnode and nncell for HiFi and RANS now match
-    if (rans_nnode!=les_nnode): quit('Warning: rans_nnode != les_nnode... Interpolation failed')
-    if (rans_ncell!=les_ncell): quit('Warning: rans_ncell != les_ncell... Interpolation failed')
+    if (rans_nnode!=les_nnode): quit('********** Warning: rans_nnode != les_nnode... Interpolation failed **********')
+    if (rans_ncell!=les_ncell): quit('********** Warning: rans_ncell != les_ncell... Interpolation failed **********')
 
     e_bool = les_vtk.point_arrays['boolean']
 
-    # Store features and targets (error metrics) in pandas dataframes
-    print('\nSaving data in pandas dataframes')
+    #############################
+    # Final checks and store data
+    #############################
+    # pandas dataframes
     q_data.pd = pd.DataFrame(q, columns=feature_labels)
     e_data.pd = pd.DataFrame(e_bool, columns=error_labels)
+
+    # Check for NaN's and flag them (by saving to q_nan in vtk with value=99)
+    q_nansum =q_data.pd.isnull().sum().sum() 
+    if (q_nansum > 0):
+        print('********** Warning %d NaNs in X data **********' %(q_nansum))
+        q_nans = q_data.pd.fillna(99)
+        rans_vtk.point_arrays['q_nan'] = q_nans
+
+    df = pd.DataFrame(e_raw)
+    e_nansum = df.isnull().sum().sum() 
+    if (e_nansum > 0):
+        print('********** Warning %d NaNs in Y data **********' %(e_nansum))
+        e_nans = e_data.pd.fillna(99)
+        les_vtk.point_arrays['e_raw_nan'] = e_nans
 
     # Put new vtk data back into vtk objects
     q_data.vtk = rans_vtk
     e_data.vtk = les_vtk
    
-    print('\n-----------------------')
-    print('Finished pre-processing')
-    print('-----------------------')
-    
+
     return q_data, e_data
 
 
@@ -183,6 +196,8 @@ def preproc_RANS(q_data, e_data, clip=None, comp=False):
 def make_features(rans_vtk):
     from vtk.numpy_interface import dataset_adapter as dsa
 
+    small = np.finfo(float).tiny
+
     rans_nnode = rans_vtk.number_of_points
 
     delij = np.zeros([rans_nnode,3,3])
@@ -221,7 +236,7 @@ def make_features(rans_vtk):
     Onorm = algs.sum(     Onorm,axis=1) # sum previous summations i.e. along j axis
     
     # Store q1
-    q[:,feat] = (Onorm - Snorm)/(Onorm + Snorm)
+    q[:,feat] = (Onorm - Snorm)/(Onorm + Snorm + small)
     feature_labels[feat] = 'Q-Criterion'
     feat += 1
     
@@ -234,7 +249,7 @@ def make_features(rans_vtk):
     print('2: Turbulence intensity')
     tke = rans_dsa.PointData['k'] 
     UiUi = algs.mag(U)**2.0
-    q[:,feat] = tke/(0.5*UiUi+tke)
+    q[:,feat] = tke/(0.5*UiUi+tke+small)
     feature_labels[feat] = 'Turbulence intensity'
     feat += 1
     
@@ -264,7 +279,7 @@ def make_features(rans_vtk):
         for j in range(0,3):
             B += U[:,i]*U[:,i]*dpdx[:,j]*dpdx[:,j]
     
-    q[:,feat] = A/(algs.sqrt(B)+algs.abs(A))
+    q[:,feat] = A/(algs.sqrt(B)+algs.abs(A)+small)
     feature_labels[feat] = 'Pgrad along streamline'
     feat += 1
     
@@ -273,7 +288,7 @@ def make_features(rans_vtk):
     print('5: Ratio of turb time scale to mean strain time scale')
     A = 1.0/rans_dsa.PointData['w']  #Turbulent time scale (eps = k*w therefore also A = k/eps)
     B = 1.0/Snorm
-    q[:,feat] = A/(A+B)
+    q[:,feat] = A/(A+B+small)
     feature_labels[feat] = 'turb/strain time-scale'
     feat += 1
     
@@ -304,7 +319,7 @@ def make_features(rans_vtk):
     #for k in range(0,3):
     #    B += 0.5*rans_dsa.PointData['ro']*du2dx[:,k,k]*du2dx[:,k,k]
     
-    q[:,feat] = algs.sqrt(A)/(algs.sqrt(A)+B)
+    q[:,feat] = algs.sqrt(A)/(algs.sqrt(A)+B+small)
     #q[:,6] = algs.sqrt(A)/(algs.sqrt(A)+algs.abs(B))
     feature_labels[feat] = 'Pressure/shear stresses'
     feat += 1
@@ -324,7 +339,7 @@ def make_features(rans_vtk):
     
     B = Snorm
     
-    q[:,feat] = algs.sqrt(A)/(algs.sqrt(A)+B)
+    q[:,feat] = algs.sqrt(A)/(algs.sqrt(A)+B+small)
     feature_labels[feat] = 'Vortex stretching'
     feat += 1
     
@@ -343,7 +358,7 @@ def make_features(rans_vtk):
             for j in range(0,3):
                 for m in range(0,3):
                     B += U[:,n]*U[:,n]*U[:,i]*J[:,i,j]*U[:,m]*J[:,m,j]
-    q[:,feat] = algs.abs(A)/(algs.sqrt(B)+algs.abs(A))
+    q[:,feat] = algs.abs(A)/(algs.sqrt(B)+algs.abs(A)+small)
     feature_labels[feat] = 'Deviation from parallel shear'
     feat += 1
     
@@ -364,7 +379,7 @@ def make_features(rans_vtk):
         for l in range(0,3):
             B += uiuj[:,j,l]*Sij[:,j,l]
     
-    q[:,feat] = A/(algs.abs(B)+algs.abs(A))
+    q[:,feat] = A/(algs.abs(B)+algs.abs(A)+small)
     feature_labels[feat] = 'Convection/production of k'
     feat += 1
     
@@ -378,7 +393,7 @@ def make_features(rans_vtk):
     
     B = tke
     
-    q[:,feat] = A/(B + A)
+    q[:,feat] = A/(B + A + small)
     feature_labels[feat] = 'total/normal stresses'
     feat += 1
     
@@ -396,7 +411,7 @@ def make_features(rans_vtk):
     
     uiujcevmSij = uiujSij + (cevm_2nd/tke)*nu_t**2.0 + (cevm_3rd/tke**2.0)*nu_t**3.0
     
-    q[:,feat] = (uiujcevmSij-uiujSij) / (uiujcevmSij+uiujSij)
+    q[:,feat] = (uiujcevmSij-uiujSij) / (uiujcevmSij+uiujSij + small)
     feature_labels[feat] = 'CEV comparison'
     feat += 1
 
