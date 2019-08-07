@@ -7,13 +7,82 @@ from joblib import dump, load
 
 import matplotlib.pyplot as plt
 
+from cfd2ml.base import CaseData
+
+def classify(json):
+    from cfd2ml.classify import RF_classifier
+
+    print('\n-----------------------')
+    print('Started training')
+    print('Type: Classification')
+    print('-----------------------')
+
+    modelname  = json['save_model']
+    datloc     = json['training_data_location']
+    cases      = json['training_data_cases']
+    target     = json['classifier_target']
+
+    options = None
+    sample  = None
+    if (("options" in json)==True):
+        options    = json['options']
+        if(("sample" in options)==True):
+            sample = options['sample']
+
+    # Read data
+    X_data = pd.DataFrame()
+    Y_data = pd.DataFrame()
+
+    # Read in each data set, append into single X and Y df's to pass to classifier. 
+    # "group" identifier column is added to X_case to id what case the data came from. 
+    # (Used in LeaveOneGroupOut CV later)
+    caseno = 1
+    for case in cases:
+        # Read in RANS (X) data
+        filename = os.path.join(datloc,case+'_X.pkl')
+        X_case = CaseData(filename)
+
+        # Add "group" id column
+        X_case.pd['group'] = caseno
+        caseno += 1
+
+        # Read in HiFi (Y) data
+        filename = os.path.join(datloc,case+'_Y.pkl')
+        Y_case = CaseData(filename)
+
+        # Add X and Y data to df's
+        X_data = X_data.append(X_case.pd,ignore_index=True)
+        Y_data = Y_data.append(Y_case.pd,ignore_index=True)
+
+    # Randomly sample a % of the data
+    nrows = X_data.shape[0]
+    print('Original number of rows in dataset: = ', nrows)
+    if(sample is not None):
+        index = np.random.choice(X_data.index,int(sample*nrows))
+        X_data = X_data.iloc[index]
+        Y_data = Y_data.iloc[index]
+        nrows = len(X_data.index)
+        print('Number of rows in dataset after sampling: = ', nrows)
+
+    # Train classifier
+    rf_clf =  RF_classifier(X_data,Y_data[target],options=options) 
+
+    # Save classifier
+    filename = modelname + '.joblib'
+    print('\nSaving classifer to ', filename)
+    dump(rf_clf, filename) 
+
+    print('\n-----------------------')
+    print('Finished training')
+    print('-----------------------')
+
 def RF_classifier(X_data,Y_data,options=None):
     from sklearn.ensemble import RandomForestClassifier
 
     ####################
     # Parse user options
     ####################
-    params = None
+    params = {}
     gridsearch   = False
     GS_settings  = None
     randomsearch = False
@@ -44,10 +113,11 @@ def RF_classifier(X_data,Y_data,options=None):
         if(randomsearch==True and gridsearch==True): quit('********** Stopping! grid_search and random_search both set *********')
 
         if (("accuracy" in options)==True):
-            accuracy = True
-            from sklearn.model_selection import cross_validate
-            from sklearn.metrics import precision_recall_curve, auc, f1_score, accuracy_score, balanced_accuracy_score, confusion_matrix
-            from cfd2ml.utilities import print_cm
+            accuracy = options['accuracy']
+            if (accuracy==True):
+                from sklearn.model_selection import cross_validate
+                from sklearn.metrics import precision_recall_curve, auc, f1_score, accuracy_score, balanced_accuracy_score, confusion_matrix
+                from cfd2ml.utilities import print_cm
 
         if (("scoring" in options)==True):
             scoring = options['scoring']
@@ -94,7 +164,7 @@ def RF_classifier(X_data,Y_data,options=None):
     if(gridsearch==True):
         # Finding optimal hyperparameters with GridSearchCV
         print('\n Performing GridSearchCV to find optimal hyperparameters for random forest classifier')
-        clf = RandomForestClassifier(random_state=42)
+        clf = RandomForestClassifier(**params,random_state=42)
         if (cv_type=='logo'): cv = logo.split(X_data,Y_data,groups)
         GS_clf = GridSearchCV(estimator=clf,param_grid=GS_params, cv=cv, scoring=scoring, iid=False, verbose=2, **GS_settings)
         GS_clf.fit(X_data,Y_data)
@@ -114,7 +184,7 @@ def RF_classifier(X_data,Y_data,options=None):
     elif(randomsearch==True):
         # Finding optimal hyperparameters with RandomSearchCV
         print('\n Performing RandomizedSearchCV to find optimal hyperparameters for random forest classifier')
-        clf = RandomForestClassifier(random_state=42)
+        clf = RandomForestClassifier(**params,random_state=42)
         if (cv_type=='logo'): cv = logo.split(X_data,Y_data,groups)
         RS_clf = RandomizedSearchCV(estimator=clf,param_distributions=RS_params, cv=cv, scoring=scoring,iid=False, verbose=2, error_score=np.nan, **RS_settings)
         RS_clf.fit(X_data,Y_data)

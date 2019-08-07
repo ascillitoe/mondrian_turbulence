@@ -6,98 +6,106 @@ import matplotlib.pyplot as plt
 import vista
 from cfd2ml.base import CaseData
 
-def predict(q_data,modelname,loadloc='.',clf=None):
+def predict(json):
 
-    ##################################
-    # Load classifier if not passed in
-    ##################################
-    if clf is None:
-        filename = modelname + '.joblib'
-        filename = os.path.join(loadloc, filename)
-        print('\nLoading classifer from ', filename)
-        clf = load(filename) 
+    print('\n-----------------------')
+    print('Started prediction')
+    print('-----------------------')
 
-    ####################
-    # Check feature data
-    ####################
-    #TODO - check for missing values and NaN's
-    
-    # Find feature and target headers
-    X = q_data.pd
-    X_headers = X.columns
-    nX = X_headers.size
+    model  = json['model']
+    datloc = json['data_location']
+    cases  = json['data_cases']
+    savloc = json['save_location']
 
-    ###################################
-    # Predict Y using loaded classifier
-    ###################################
-    print('\nUse trained classifier to predict targets based on test features')
-    Y_pred = clf.predict(X)
-    Y_pred = Y_pred.toarray()
-    nY = Y_pred.shape[1]
+    compare_predict = False
+    if (("prediction_accuracy" in json)==True): 
+        compare_predict = True
+        target = json['prediction_accuracy']['target']
+        type   = json['prediction_accuracy']['type']
 
-    # Save prediction to new CaseData object
-    new_data = CaseData('model_' + modelname + '_qdat_' + q_data.name) 
-    new_data.pd  = pd.DataFrame(Y_pred)  #Add to pandas dataframe
+    # Read in ML model
+    filename = model + '.joblib'
+    print('\nReading model from ', filename)
+    model = load(filename) 
 
-    new_data.vtk = vista.UnstructuredGrid(q_data.vtk.offset,q_data.vtk.cells,q_data.vtk.celltypes,q_data.vtk.points) #init new vtk grid with same cells and points as q_data.vtk
-    new_data.vtk.point_arrays['Y_pred'] = Y_pred # Add Y_pred into new vtk grid
+    # Read in each X_data, predict Y, write predicted Y
+    caseno = 1
+    for case in cases:
+        # Read in RANS (X) data
+        filename = os.path.join(datloc,case+'_X.pkl')
+        X_case = CaseData(filename)
 
-    return new_data
+        print('\n***********************')
+        print(' Case: ', caseno)
+        print('***********************')
+
+        # Predict HiFi (Y) data and store add to vtk
+        Y_pred = CaseData(case + '_pred') 
+        Y_pred.pd = pd.Series(model.predict(X_case.pd)) # only need as numpy ndarray but convert to pd series for consistency 
+        Y_pred.vtk = vista.UnstructuredGrid(X_case.vtk.offset,X_case.vtk.cells,X_case.vtk.celltypes,X_case.vtk.points)
+        Y_pred.vtk.point_arrays['Y_pred'] = Y_pred.pd.to_numpy()
+
+        # Read in true HiFi (Y) data and compare to predict
+        if (compare_predict==True):
+            filename = os.path.join(datloc,case+'_Y.pkl')
+            Y_true = CaseData(filename)
+
+            # Write Y_true to vtk for analysis
+            index = Y_true.pd.columns.get_loc(target)
+            Y_pred.vtk.point_arrays['Y_true'] = Y_true.pd.to_numpy()[:,index]
+
+            # accuracy metrics
+            if (type=='classification'):
+                predict_classifier_accuracy(Y_pred.pd,Y_true.pd[target])
+            elif(type=='regression'):
+                quit('Regression not implemented yet')
+
+            # Write TP, TN, FP, FN to vtk
+            if (type=='classification'):
+                Y_pred.vtk.point_arrays['confuse'] = confusion_labels(Y_pred.pd, Y_true.pd[target])
+            elif(type=='regression'):
+                quit('Regression not implemented yet')
+
+        Y_pred.WriteVTK(Y_pred.name + '.vtk')
+
+        caseno += 1
+
+    print('\n-----------------------')
+    print('Finished prediction')
+    print('-----------------------')
 
 
-def predict_and_compare(q_data,e_data,modelname,loadloc='.',clf=None,accuracy=False):
-    from sklearn.metrics import accuracy_score
-    if(accuracy==True): 
-        from sklearn.metrics import classification_report, multilabel_confusion_matrix, precision_recall_curve
-        from cfd2ml.utilities import print_cm
+def predict_classifier_accuracy(Y_pred,Y_true):
+    # Y_pred and Y_true are pandas dataframes
+ 
+    from sklearn.metrics import f1_score, accuracy_score, balanced_accuracy_score, confusion_matrix
+    from cfd2ml.utilities import print_cm
 
-    ##################################
-    # Load classifier if not passed in
-    ##################################
-    if clf is None:
-        filename = modelname + '.joblib'
-        filename = os.path.join(loadloc, filename)
-        print('\nLoading classifer from ', filename)
-        clf = load(filename) 
+    # F1 scores
+    f1score = f1_score(Y_true , Y_pred)
+    # Accuracy scores
+    Ascore = accuracy_score(Y_true , Y_pred)
+    # Balanced accuracy scores
+    BAscore = balanced_accuracy_score(Y_true , Y_pred)
 
-    ####################
-    # Check feature data
-    ####################
-    #TODO - check for missing values and NaN's
-    
-    # Find feature and target headers
-    X = q_data.pd
-    X_headers = X.columns
-    nX = X_headers.size
+    # Print validation scores (training scores are stored to print mean later, but not printed for each fold)
+    print('F1 score = %.2f %%' %(f1score*100) )
+    print('Total error = %.2f %%' %((1.0-Ascore)*100) )
+    print('Per-class error = %.2f %%' %((1.0-BAscore)*100) )
 
-    Y_true = e_data.pd
-    Y_headers = Y_true.columns
-    nY = Y_headers.size
+    # Print confusion matrix for this fold
+    print('Confusion matrix:')
+    confuse_mat = confusion_matrix(Y_true, Y_pred)
+    print_cm(confuse_mat, ['Off','On'])
 
-    ###################################
-    # Predict Y using loaded classifier
-    ###################################
-    print('\nUse trained classifier to predict targets based on test features')
-    Y_pred = clf.predict(X)
-    Y_pred = Y_pred.toarray()
 
-    # Save prediction to new CaseData object
-    new_data = CaseData('model_' + modelname + '_qdat_' + q_data.name) 
+def confusion_labels(Y_pred, Y_true):
+    # Y_pred and Y_true are vtk obj's
 
-    new_data.vtk = vista.UnstructuredGrid(q_data.vtk.offset,q_data.vtk.cells,q_data.vtk.celltypes,q_data.vtk.points) #init new vtk grid with same cells and points as q_data.vtk
-    new_data.vtk.point_arrays['Y_pred'] = Y_pred # Add Y_pred into new vtk grid
-
-    Y_pred = pd.DataFrame(Y_pred,columns=Y_headers)
-#    new_data.pd  = Y_pred  #Add to pandas dataframe TODO overwriting comlumns, need to rename
-
-    ###################################################
-    # Compare to actual test data to determine accuracy
-    ###################################################
-    new_data.vtk.point_arrays['Y_true'] = Y_true.values # Add Y_true into the new vtk grid
-
+#    new_data.vtk.point_arrays['Y_true'] = Y_true.values # Add Y_true into the new vtk grid
     # construct array of classes [1,2,3,4] for True +ve, True -ve, False +ve, False -ve
-    true = Y_true.values
-    pred = Y_pred.values
+    true = Y_true.to_numpy()#.values
+    pred = Y_pred.to_numpy()#.values
     confuse = np.zeros_like(true)
     TP = np.where((true==1) & (pred==1))
     TN = np.where((true==0) & (pred==0))
@@ -108,67 +116,4 @@ def predict_and_compare(q_data,e_data,modelname,loadloc='.',clf=None,accuracy=Fa
     confuse[FP] = 3
     confuse[FN] = 4
 
-    # Save in vtk object
-    new_data.vtk.point_arrays['Y_confuse'] = confuse
-
-    # Save in pandas object
-    Y_confuse = pd.DataFrame(confuse,columns=Y_headers)
-#    new_data.pd = Y_confuse TODO rename columns
-
-    # Classifier accuracy
-    print('\nSubset accuracy of classifier =  %.2f %%' %(accuracy_score(Y_true,Y_pred)*100) )
-    print('\nClassifier accuracy for each target:')
-    for label in Y_headers:
-        print('%s: %.2f %%' %(label, accuracy_score(Y_true[label],Y_pred[label])*100) )
-
-    if (accuracy==True):
-        # Classification report (f1-score, recall etc)
-        print('\nClassification report for each target:')
-        i = 0
-        for label in Y_headers:
-            print('\nTarget %d: %s' %(i+1,label))
-            print(classification_report(Y_true[label], Y_pred[label],target_names=['Off','On']) )
-        
-        # Confusion matrix
-        confuse_mat = multilabel_confusion_matrix(Y_true, Y_pred)
-        print('\nConfusion matrices:')
-        i = 0
-        for label in Y_headers:
-            print('\nTarget %d: %s' %(i+1,label))
-            print_cm(confuse_mat[i,:,:], ['Off','On'])
-            i += 1
-
-        # Print errors
-        nTP = np.sum(confuse==1,axis=0)
-        nTN = np.sum(confuse==2,axis=0)
-        nFP = np.sum(confuse==3,axis=0)
-        nFN = np.sum(confuse==4,axis=0)
-        err_tot = (nFP+nFN)/(nTP+nTN+nFP+nFN)
-        err_ca  = 0.5*( (nFP/(nTP+nFP)) + (nFN/(nTN+nFN)))
-        print('\nError rates:')
-        i = 0
-        for label in Y_headers:
-            print('\nTarget %d: %s' %(i+1,label))
-            print('Total error = %.2f %%' %(err_tot[i]*100))
-            print('Class-averaged error = %.2f %%' %(err_ca[i]*100))
-            i += 1
-
-        # Plot precision-recall curve
-        print('\nPlotting precision-recall score')
-        Y_score = clf.predict_proba(X)
-        Y_score = pd.DataFrame(Y_score.toarray(),columns=Y_headers)
-
-        for label in Y_headers:
-            precision, recall, thresholds = precision_recall_curve(Y_true[label], Y_score[label])
-            plt.step(recall, precision, alpha=0.5,where='post',label=label)
-        
-        plt.xlabel('Recall')
-        plt.ylabel('Precision')
-        plt.ylim([0.0, 1.05])
-        plt.xlim([0.0, 1.0])
-        plt.title('Precision-Recall curves')
-        plt.legend()
-        plt.show()
-
-
-    return new_data
+    return confuse

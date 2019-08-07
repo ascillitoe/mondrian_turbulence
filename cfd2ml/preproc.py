@@ -5,9 +5,62 @@ import os
 
 import vista
 from vtk.numpy_interface import algorithms as algs
+from vtk.numpy_interface import dataset_adapter as dsa
 
-#from cfd2ml.base import CaseData
-from cfd2ml.utilities import build_cevm
+from cfd2ml.base import CaseData
+
+def preproc1(json):
+    from cfd2ml.preproc import preproc_RANS_and_HiFi
+    from cfd2ml.utilities import convert_rans_fields, convert_hifi_fields
+
+    print('\n-----------------------')
+    print('Started pre-processing')
+    print('Type 1')
+    print('-----------------------')
+
+    # Create output dir if needed
+    outdir = json['Output directory']
+    os.makedirs(outdir, exist_ok=True)
+
+   # Loop through cases, perform preprocessing of CFD data
+    for case in json['Cases']:
+        id = case['Case ID']
+        name = case['Name']
+
+        print('\n**********************************************')
+        print('Case %s: %s' %(id,name) )
+        print('**********************************************')
+
+        RANSfile = case['RANS file']
+        HiFifile = case['HiFi file']
+        arraynames = case['HiFi array names']
+        
+        if (("options" in case)==True):
+            options = case['options']
+
+        # Read data
+        X_data = CaseData(name)
+        Y_data = CaseData(name)
+
+        print('Reading X data from vtk file: ', RANSfile)
+        X_data.ReadVTK(RANSfile)
+        print('Reading Y data from vtk file: ', HiFifile)
+        Y_data.ReadVTK(HiFifile)
+
+        # Convert RANS and HiFi array names
+        X_data.vtk = convert_rans_fields(X_data.vtk)
+        Y_data.vtk = convert_hifi_fields(Y_data.vtk,arraynames)
+
+        # Run preproc
+        X_data, Y_data = preproc_RANS_and_HiFi(X_data, Y_data, **options)
+
+        # Write data
+        X_data.Write(os.path.join(outdir, id + '_X')) 
+        Y_data.Write(os.path.join(outdir, id + '_Y'))
+
+    print('\n-----------------------')
+    print('Finished pre-processing')
+    print('-----------------------')
 
 def preproc_RANS_and_HiFi(q_data, e_data, clip=None,comp=False):
    
@@ -194,7 +247,7 @@ def preproc_RANS(q_data, e_data, clip=None, comp=False):
 
 
 def make_features(rans_vtk):
-    from vtk.numpy_interface import dataset_adapter as dsa
+    from cfd2ml.utilities import build_cevm
 
     small = np.finfo(float).tiny
 
@@ -418,8 +471,6 @@ def make_features(rans_vtk):
     return q, feature_labels
 
 def make_errors(les_vtk):
-    from vtk.numpy_interface import dataset_adapter as dsa
-
     from tqdm import tqdm
 
     les_nnode = les_vtk.number_of_points
