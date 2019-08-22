@@ -70,7 +70,7 @@ def classify(json):
     # Save classifier
     filename = modelname + '.joblib'
     print('\nSaving classifer to ', filename)
-    dump(rf_clf, filename) 
+    dump(rf_clf, filename, protocol=2) 
 
     print('\n-----------------------')
     print('Finished training')
@@ -128,13 +128,13 @@ def RF_classifier(X_data,Y_data,options=None):
     ##############
     # Prepare data
     ##############
+    if(cv_type=='logo'): groups = X_data['group']
+    X_data = X_data.drop(columns='group')
+
     # Find feature and target headers
     X_headers = X_data.columns
     Y_header  = Y_data.name
 
-    if(cv_type=='logo'): groups = X_data['group']
-    X_data = X_data.drop(columns='group')
-   
     nX = X_headers.size
     print('\nFeatures:')
     for i in range(0,nX):

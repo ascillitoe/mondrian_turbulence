@@ -483,7 +483,7 @@ def make_errors(les_vtk):
     les_dsa = dsa.WrapDataObject(les_vtk)
 
     print('Error metric:')
-    nerr = 2
+    nerr = 3
     err = 0
     e_raw  = np.zeros([les_nnode,nerr])
     e_bool = np.zeros([les_nnode,nerr],dtype=int)
@@ -556,11 +556,30 @@ def make_errors(les_vtk):
     #e_raw[:,1] = inv2
     e_raw[:,err] = inv3
     
-    #index = algs.where(inv2>1.0/6.0)   #TODO - study what is best to use here. inv2, inv3, c1c etc... 
-    index = algs.where(algs.abs(inv3)>0.01)
+#    index = algs.where(inv2>1.0/6.0)   #TODO - study what is best to use here. inv2, inv3, c1c etc...  # DATA1
+#    index = algs.where(algs.abs(inv3)>0.01)                                                            # DATA2
+    index = algs.where(algs.abs(inv3)>0.005)                                                           # DATA3
+#    index = algs.where((uiuj[:,0,0]/uiuj[:,2,2])>2.0)                                                   # DATA4
+#    index = algs.where((uiuj[:,1,1]/uiuj[:,2,2])>1.0)                                                   # DATA5
+
     e_bool[index,err] = 1
     error_labels[err] = 'Stress anisotropy'
     err += 1
+
+    # Error metric 2: Negative Pk
+    ############################################
+    A = np.zeros(les_nnode)
+    for i in range(0,3):
+        for j in range(0,3):
+            A[:] += (-uiuj[:,i,j] * J[:,i,j])
+
+    e_raw[:,err] = A
+    index = algs.where(A<0.0)
+
+    e_bool[index,err] = 1
+    error_labels[err] = 'Negative Pk'
+    err += 1
+
     
 #    # Error metric 3: Non-linearity
 #    ###############################

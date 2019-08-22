@@ -5,6 +5,8 @@ from joblib import dump, load
 import matplotlib.pyplot as plt
 import vista
 from cfd2ml.base import CaseData
+from sklearn.metrics import precision_recall_curve, auc
+plt.rcParams.update({'font.size': 18})
 
 def predict(json):
 
@@ -16,6 +18,7 @@ def predict(json):
     datloc = json['data_location']
     cases  = json['data_cases']
     savloc = json['save_location']
+    os.makedirs(savloc, exist_ok=True)
 
     compare_predict = False
     if (("prediction_accuracy" in json)==True): 
@@ -45,6 +48,9 @@ def predict(json):
         Y_pred.vtk = vista.UnstructuredGrid(X_case.vtk.offset,X_case.vtk.cells,X_case.vtk.celltypes,X_case.vtk.points)
         Y_pred.vtk.point_arrays['Y_pred'] = Y_pred.pd.to_numpy()
 
+        Y_prob = pd.Series(model.predict_proba(X_case.pd)[:,1]) # only need as numpy ndarray but convert to pd series for consistency 
+        Y_pred.vtk.point_arrays['Y_prob'] = Y_prob.to_numpy()
+
         # Read in true HiFi (Y) data and compare to predict
         if (compare_predict==True):
             filename = os.path.join(datloc,case+'_Y.pkl')
@@ -66,14 +72,24 @@ def predict(json):
             elif(type=='regression'):
                 quit('Regression not implemented yet')
 
-        Y_pred.WriteVTK(Y_pred.name + '.vtk')
+            precision, recall, _ = precision_recall_curve(Y_true.pd[target], Y_prob)
+            lab = 'Case %s AUC=%.4f' % (case, auc(recall, precision))
+            plt.step(recall, precision, label=lab)    
+
+        filename = os.path.join(savloc,Y_pred.name + '.vtk')
+        Y_pred.WriteVTK(filename)
 
         caseno += 1
+
+    plt.legend()
+    plt.xlabel('Recall (Sensitivity)')
+    plt.ylabel('Precision')
+    plt.show()
 
     print('\n-----------------------')
     print('Finished prediction')
     print('-----------------------')
-
+    
 
 def predict_classifier_accuracy(Y_pred,Y_true):
     # Y_pred and Y_true are pandas dataframes
