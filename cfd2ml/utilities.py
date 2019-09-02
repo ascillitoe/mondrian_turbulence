@@ -307,3 +307,13 @@ def plot_precision_recall_vs_threshold(p, r, thresholds, ax=None,c=None,t=None,c
     ax.set_ylabel("Score")
     ax.set_xlabel("Decision Threshold")
 
+def eijk(i,j,k):
+    """ Levi-Civita symbol
+    """
+    try:
+        e = ((j-i)*(k-i)*(k-j))/(abs(j-i)*abs(k-i)*abs(k-j))
+    except ZeroDivisionError:
+        e = 0
+
+    return e
+

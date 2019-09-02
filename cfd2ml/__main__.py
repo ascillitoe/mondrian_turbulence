@@ -1,7 +1,7 @@
 def main():
     import sys
     import json
-    from cfd2ml.preproc import preproc1
+    from cfd2ml.preproc import preproc_RANS_based
     from cfd2ml.classify import classify
     from cfd2ml.predict import predict
 
@@ -20,12 +20,10 @@ def main():
     # Pre-processing task
     if (task=='preproc'):
         type = json_dat['type'] 
-        if (type==1):
-            preproc1(json_dat)
-        elif (type==2):
-            preproc2(json_dat)
+        if (type==1 or type==2):
+            preproc_RANS_based(json_dat,type)
         elif (type==3):
-            preproc3(json_dat)
+            preproc_LES_based(json_dat)
 
     elif(task=='train'):
         type = json_dat['type'] 

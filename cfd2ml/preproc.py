@@ -9,13 +9,16 @@ from vtk.numpy_interface import dataset_adapter as dsa
 
 from cfd2ml.base import CaseData
 
-def preproc1(json):
+def preproc_RANS_based(json,type):
     from cfd2ml.preproc import preproc_RANS_and_HiFi
     from cfd2ml.utilities import convert_rans_fields, convert_hifi_fields
 
     print('\n-----------------------')
     print('Started pre-processing')
-    print('Type 1')
+    if (type==1):
+        print('Type 1')
+    elif (type==2):
+        print('Type 2')
     print('-----------------------')
 
     # Create output dir if needed
@@ -52,7 +55,7 @@ def preproc1(json):
         Y_data.vtk = convert_hifi_fields(Y_data.vtk,arraynames)
 
         # Run preproc
-        X_data, Y_data = preproc_RANS_and_HiFi(X_data, Y_data, **options)
+        X_data, Y_data = preproc_RANS_and_HiFi(X_data, Y_data, type, **options)
 
         # Write data
         X_data.Write(os.path.join(outdir, id + '_X')) 
@@ -62,7 +65,7 @@ def preproc1(json):
     print('Finished pre-processing')
     print('-----------------------')
 
-def preproc_RANS_and_HiFi(q_data, e_data, clip=None,comp=False):
+def preproc_RANS_and_HiFi(q_data, e_data, type, clip=None,comp=False):
    
     #################################
     # Initial processing of RANS data
@@ -84,7 +87,7 @@ def preproc_RANS_and_HiFi(q_data, e_data, clip=None,comp=False):
     print('Number of nodes extracted = ', rans_nnode - rans_vtk.number_of_points)
     rans_nnode = rans_vtk.number_of_points
     
-    # Clip mesh to given ranges
+    # Clip mesh to given ranges   # TODO - move this to after gradient calcs!
     if (clip is not None):
         xclip_min = clip[0:3]
         xclip_max = clip[3:6]
@@ -120,8 +123,11 @@ def preproc_RANS_and_HiFi(q_data, e_data, clip=None,comp=False):
     print('\nProcessing RANS data into features')
     print(  '----------------------------------')
 
-    q, feature_labels = make_features(rans_vtk)
-    
+    if (type==1):
+        q, feature_labels = make_features(rans_vtk)
+    elif (type==2):
+        q, feature_labels = make_features_inv(rans_vtk)
+
     # Store features in vtk obj
     ###########################
     rans_vtk.point_arrays['q'] = q
@@ -646,19 +652,231 @@ def make_errors(les_vtk):
     return e_raw, e_bool, error_labels
 
 
+def make_features_inv(rans_vtk):
+    from cfd2ml.utilities import eijk
 
-#    #####################
-#    # Plot stuff to check
-#    #####################
-#        print('\n Plotting...')
-#        plotter = vista.Plotter()
-#        sargs = dict(interactive=True,height=0.25,title_font_size=12, label_font_size=11,shadow=True, n_labels=5, italic=True, fmt='%.1f',font_family='arial',vertical=False)
-#        rans_vtk.point_arrays['plot'] = q3
-#        clims = [np.min(q3), np.max(q3)]
-#        print(clims)
-#        plotter.add_mesh(rans_vtk,scalars='plot',rng=clims,scalar_bar_args=sargs)
-#        plotter.view_xy()
-#        #plotter.add_mesh(data2,scalars=J2[:,1,0],show_scalar_bar=True,scalar_bar_args=sargs,rng=[-100,100]) #can plot np array directly but colour bar doesn't work...
-#        plotter.show()
-       
+    small = np.finfo(float).tiny
 
+    rans_nnode = rans_vtk.number_of_points
+
+    # Wrap vista object in dsa wrapper
+    rans_dsa = dsa.WrapDataObject(rans_vtk)
+
+    print('Feature:')
+    nfeat = 50
+    q = np.empty([rans_nnode,nfeat])
+    feature_labels = np.empty(nfeat, dtype='object')
+    
+    # Non-dim strain and vorticity
+    ##############################
+    print('Constructing non-dim strain and vorticity tensor')
+    # Velocity vector
+    U = rans_dsa.PointData['U'] # NOTE - Getting variables from dsa obj not vtk obj as want to use algs etc later
+    
+    # Velocity gradient tensor and its transpose
+    # J[:,i-1,j-1] is dUidxj
+    # Jt[:,i-1,j-1] is dUjdxi
+    Jt = algs.gradient(U)        # Jt is this one as algs uses j,i ordering
+    J  = algs.apply_dfunc(np.transpose,Jt,(0,2,1))
+    
+    # Strain and vorticity tensors
+    Sij = 0.5*(J+Jt)
+    Oij = 0.5*(J-Jt)
+
+    # Frob. norm of Sij and Oij  (Snorm and Onorm are actually S^2 and O^2, sqrt needed to get norms)
+    Snorm = algs.sum(2.0*Sij**2,axis=1) # sum i axis
+    Snorm = algs.sum(     Snorm,axis=1) # sum previous summations i.e. along j axis
+    Onorm = algs.sum(2.0*Oij**2,axis=1) # sum i axis
+    Onorm = algs.sum(     Onorm,axis=1) # sum previous summations i.e. along j axis
+    Snorm = algs.sqrt(Snorm) 
+    Onorm = algs.sqrt(Onorm) 
+
+    # Non-dim Sij by eps/k
+    tke = rans_dsa.PointData['k']
+    eps = rans_dsa.PointData['w']*tke
+    Sij_h = Sij / (eps/tke)
+
+    # Non-dim Oij by eps/k
+    Oij_h = Oij / (eps/tke)
+
+    # Non-dim pressure gradient
+    ###########################
+    print('Constructing non-dim pressure gradient')
+    dpdx  = algs.gradient(rans_dsa.PointData['p'])
+    ro = rans_dsa.PointData['ro']
+    DUDt = U[:,0]*J[:,:,0] + U[:,1]*J[:,:,1] + U[:,2]*J[:,:,2]
+    dpdx_h = dpdx / ro*algs.mag(DUDt)
+
+    # Non-dim tke gradient
+    ######################
+    print('Constructing non-dim tke gradient')
+    dkdx  = algs.gradient(tke)
+    dkdx_h = dkdx / (eps/algs.sqrt(tke)) 
+
+    # Transform dpdx into ani-symmetric tensor Ap=-I x dpdx
+    Ap = np.zeros([rans_nnode,3,3])
+    I = np.eye(3)
+    for a in range(3):
+        for b in range(3):
+            for c in range(3):
+                for d in range(3):
+                    Ap[:,a,b] -= eijk(b,c,d)*I[a,c]*dpdx_h[:,d]
+
+
+    # Transform dkdx into ani-symmetric tensor Ak=-I x dkdx
+    Ak = np.zeros([rans_nnode,3,3])
+    for a in range(3):
+        for b in range(3):
+            for c in range(3):
+                for d in range(3):
+                    Ak[:,a,b] -= eijk(b,c,d)*I[a,c]*dkdx_h[:,d]
+
+    # Construct all invariant bases
+    ###############################
+    # Use numpy matmul to construct S^2, S^3 etc as we use these alot 
+    # (matmul can be used as for arrays of dim>2 as "it is treated as a stack of matrices residing in the last two indexes and is broadcast accordingly")
+    S = Sij_h
+    O = Oij_h
+    S2 = np.matmul(S,S)
+    S3 = np.matmul(S2,S)
+    O2 = np.matmul(O,O)
+    Ap2 = np.matmul(Ap,Ap)
+    Ak2 = np.matmul(Ak,Ak)
+
+    # 1-2
+    q[:,0] = algs.trace(S2)
+    feature_labels[0] = 'S2'
+    q[:,1] = algs.trace(S3)
+    feature_labels[1] = 'S3'
+    # 3-5
+    q[:,2] = algs.trace(O2)
+    feature_labels[2] = 'O2'
+    q[:,3] = algs.trace(Ap2)
+    feature_labels[3] = 'Ap2'
+    q[:,4] = algs.trace(Ak2)
+    feature_labels[4] = 'Ak2'
+    # 6-14
+    q[:,5] = algs.trace(np.matmul(O2,S))
+    feature_labels[5] = 'O2*S'
+    q[:,6] = algs.trace(np.matmul(O2,S2))
+    feature_labels[6] = 'O2*S2'
+    q[:,7] = algs.trace(np.matmul(np.matmul(O2,S),np.matmul(O,S2)))
+    feature_labels[7] = 'O2*S*O*S2'
+    q[:,8] = algs.trace(np.matmul(Ap2,S))
+    feature_labels[8] = 'Ap2*S'
+    q[:,9] = algs.trace(np.matmul(Ap2,S2))
+    feature_labels[9] = 'Ap2*S2'
+    q[:,10] = algs.trace(np.matmul(np.matmul(Ap2,S),np.matmul(Ap,S2)))
+    feature_labels[10] = 'Ap2*S*Ap*S2'
+    q[:,11] = algs.trace(np.matmul(Ak2,S))
+    feature_labels[11] = 'Ak2*S'
+    q[:,12] = algs.trace(np.matmul(Ak2,S2))
+    feature_labels[12] = 'Ak2*S2'
+    q[:,13] = algs.trace(np.matmul(np.matmul(Ak2,S),np.matmul(Ak,S2)))
+    feature_labels[13] = 'Ak2*S*Ak*S2'
+
+    # 15-17
+    q[:,14] = algs.trace(np.matmul(O,Ap))
+    feature_labels[14] = 'O*Ap'
+    q[:,15] = algs.trace(np.matmul(Ap,Ak))
+    feature_labels[15] = 'Ap*Ak'
+    q[:,16] = algs.trace(np.matmul(O,Ak))
+    feature_labels[16] = 'O*Ak'
+
+    # 18-41
+    q[:,17] = algs.trace(np.matmul(O,np.matmul(Ap,S)))
+    feature_labels[17] = 'O*Ap*S'
+    q[:,18] = algs.trace(np.matmul(O,np.matmul(Ap,S2)))
+    feature_labels[18] = 'O*Ap*S2'
+    q[:,19] = algs.trace(np.matmul(O2,np.matmul(Ap,S)))
+    feature_labels[19] = 'O2*Ap*S'
+    q[:,20] = algs.trace(np.matmul(Ap2,np.matmul(O,S)))
+    feature_labels[20] = 'Ap2*O*S'
+    q[:,21] = algs.trace(np.matmul(O2,np.matmul(Ap,S2)))
+    feature_labels[21] = 'O2*Ap*S2'
+    q[:,22] = algs.trace(np.matmul(Ap2,np.matmul(O,S2)))
+    feature_labels[22] = 'Ap2*O*S2'
+    q[:,23] = algs.trace(np.matmul(np.matmul(O2,S),np.matmul(Ap,S2)))
+    feature_labels[23] = 'O2*S*Ap*S2'
+    q[:,24] = algs.trace(np.matmul(np.matmul(Ap2,S),np.matmul(O,S2)))
+    feature_labels[24] = 'Ap2*S*O*S2'
+
+    q[:,25] = algs.trace(np.matmul(O,np.matmul(Ak,S)))
+    feature_labels[25] = 'O*Ak*S'
+    q[:,26] = algs.trace(np.matmul(O,np.matmul(Ak,S2)))
+    feature_labels[26] = 'O*Ak*S2'
+    q[:,27] = algs.trace(np.matmul(O2,np.matmul(Ak,S)))
+    feature_labels[27] = 'O2*Ak*S'
+    q[:,28] = algs.trace(np.matmul(Ak2,np.matmul(O,S)))
+    feature_labels[28] = 'Ak2*O*S'
+    q[:,29] = algs.trace(np.matmul(O2,np.matmul(Ak,S2)))
+    feature_labels[29] = 'O2*Ak*S2'
+    q[:,30] = algs.trace(np.matmul(Ak2,np.matmul(O,S2)))
+    feature_labels[30] = 'Ak2*O*S2'
+    q[:,31] = algs.trace(np.matmul(np.matmul(O2,S),np.matmul(Ak,S2)))
+    feature_labels[31] = 'O2*S*Ak*S2'
+    q[:,32] = algs.trace(np.matmul(np.matmul(Ak2,S),np.matmul(O,S2)))
+    feature_labels[32] = 'Ak2*S*O*S2'
+
+    q[:,33] = algs.trace(np.matmul(Ap,np.matmul(Ak,S)))
+    feature_labels[33] = 'Ap*Ak*S'
+    q[:,34] = algs.trace(np.matmul(Ap,np.matmul(Ak,S2)))
+    feature_labels[34] = 'Ap*Ak*S2'
+    q[:,35] = algs.trace(np.matmul(Ap2,np.matmul(Ak,S)))
+    feature_labels[35] = 'Ap2*Ak*S'
+    q[:,36] = algs.trace(np.matmul(Ak2,np.matmul(Ap,S)))
+    feature_labels[36] = 'Ak2*Ap*S'
+    q[:,37] = algs.trace(np.matmul(Ap2,np.matmul(Ak,S2)))
+    feature_labels[37] = 'Ap2*Ak*S2'
+    q[:,38] = algs.trace(np.matmul(Ak2,np.matmul(Ap,S2)))
+    feature_labels[38] = 'Ak2*Ap*S2'
+    q[:,39] = algs.trace(np.matmul(np.matmul(Ap2,S),np.matmul(Ak,S2)))
+    feature_labels[39] = 'Ap2*S*Ak*S2'
+    q[:,40] = algs.trace(np.matmul(np.matmul(Ak2,S),np.matmul(Ap,S2)))
+    feature_labels[40] = 'Ak2*S*Ap*S2'
+
+#    # 42
+    q[:,41] = algs.trace(np.matmul(O,np.matmul(Ap,Ak)))
+    feature_labels[41] = 'O*Ap*Ak'
+
+#    # 43-47
+    q[:,42] = algs.trace(np.matmul(np.matmul(O,Ap),np.matmul(Ak,S)))
+    feature_labels[42] = 'O*Ap*Ak*S'
+    q[:,43] = algs.trace(np.matmul(np.matmul(O,Ak),np.matmul(Ap,S)))
+    feature_labels[43] = 'O*Ak*Ap*S'
+    q[:,44] = algs.trace(np.matmul(np.matmul(O,Ap),np.matmul(Ak,S2)))
+    feature_labels[44] = 'O*Ap*Ak*S2'
+    q[:,45] = algs.trace(np.matmul(np.matmul(O,Ak),np.matmul(Ap,S2)))
+    feature_labels[45] = 'O*Ak*Ap*S2'
+    q[:,46] = algs.trace(np.matmul(np.matmul(np.matmul(O,Ap),np.matmul(S,Ak)),S2))
+    feature_labels[46] = 'O*Ap*S*Ak*S2'
+
+    # Supplementary features
+    ########################
+    feat = 47
+    print('Calculating supplementary features: ')
+
+    # Wall distanced based Re
+    print('Turbulence Reynolds number')
+    nu = rans_dsa.PointData['mu_l']/rans_dsa.PointData['ro']
+    Red = (algs.sqrt(tke)*rans_dsa.PointData['d'])/(50.0*nu)
+    q[:,feat] = algs.apply_dfunc(np.minimum, Red, 2.0)
+    feature_labels[feat] = 'Turbulence Re'
+    feat += 1
+
+    # Turbulence intensity
+    print('Turbulence intensity')
+    UiUi = algs.mag(U)**2.0
+    q[:,feat] = tke/(0.5*UiUi+tke+small)
+    feature_labels[feat] = 'Turbulence intensity'
+    feat += 1
+
+    # Ratio of turb time scale to mean strain time scale
+    print('Ratio of turb time scale to mean strain time scale')
+    A = 1.0/rans_dsa.PointData['w']  #Turbulent time scale (eps = k*w therefore also A = k/eps)
+    B = 1.0/Snorm
+    q[:,feat] = A/(A+B+small)
+    feature_labels[feat] = 'turb/strain time-scale'
+    feat += 1
+
+    return q, feature_labels
