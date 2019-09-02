@@ -248,3 +248,62 @@ def convert_param_dist(json_dist):
 
     return param_dist, Nmax
 
+def plot_precision_recall_threshold(p, r, thresholds, t=0.5, ax=None, c=None,case=None):
+    """
+    plots the precision recall curve and shows the current value for each
+    by identifying the classifier's threshold (t).
+    """
+    from sklearn.metrics import auc
+    import matplotlib.pyplot as plt
+
+    if (ax is None):
+        fig, ax = plt.subplots() 
+    ax.set_ylim([0.5, 1.01])
+    ax.set_xlim([0.5, 1.01])
+    ax.set_xlabel('Recall (Sensitivity)')
+    ax.set_ylabel('Precision')
+
+    # plot the curve
+    if (case is not None):
+        lab = 'Case %s: AUC=%.4f' % (case,auc(r, p))
+    else:
+        lab = 'AUC=%.4f' % (auc(r, p))
+
+    ax.step(r, p, alpha=0.2,
+             where='post',label=lab,lw=2,c=c)
+    ax.fill_between(r, p, step='post', alpha=0.2,color=c)
+
+    # plot the current threshold on the line
+    close_default_clf = np.argmin(np.abs(thresholds - t))
+    ax.plot(r[close_default_clf], p[close_default_clf], 'x', c='k',
+            markersize=10,mew=2)
+
+def plot_precision_recall_vs_threshold(p, r, thresholds, ax=None,c=None,t=None,case=None):
+    """
+    Modified from:
+    Hands-On Machine learning with Scikit-Learn
+    and TensorFlow; p.89
+    """
+    if (ax is None):
+        fig, ax = plt.subplots() 
+
+    if (case is not None): 
+        labp='Case ' + case + ': Precision'
+        labr='Case ' + case + ': Recall'
+    else:
+        labp='Precision'
+        labr='Recall'
+    ax.plot(thresholds, p[:-1], "-", c=c, label=labp)
+    ax.plot(thresholds, r[:-1], "--", c=c, label=labr)
+
+    # Plot the current threshold
+    if (t is not None):
+        close_default_clf = np.argmin(np.abs(thresholds - t))
+        ax.plot(thresholds[close_default_clf], p[close_default_clf], '+', c=c,
+                markersize=10,mew=2,label='_nolegend_')
+        ax.plot(thresholds[close_default_clf], r[close_default_clf], 'x', c=c,
+                markersize=10,mew=2,label='_nolegend_')
+
+    ax.set_ylabel("Score")
+    ax.set_xlabel("Decision Threshold")
+

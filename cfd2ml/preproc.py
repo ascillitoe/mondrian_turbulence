@@ -473,6 +473,8 @@ def make_features(rans_vtk):
 def make_errors(les_vtk):
     from tqdm import tqdm
 
+    small = np.finfo(float).tiny
+
     les_nnode = les_vtk.number_of_points
 
     delij = np.zeros([les_nnode,3,3])
@@ -483,7 +485,7 @@ def make_errors(les_vtk):
     les_dsa = dsa.WrapDataObject(les_vtk)
 
     print('Error metric:')
-    nerr = 3
+    nerr = 10
     err = 0
     e_raw  = np.zeros([les_nnode,nerr])
     e_bool = np.zeros([les_nnode,nerr],dtype=int)
@@ -495,8 +497,8 @@ def make_errors(les_vtk):
     uiuj[:,1,1] = les_dsa.PointData['vv']
     uiuj[:,2,2] = les_dsa.PointData['ww']
     uiuj[:,0,1] = les_dsa.PointData['uv']
-    #uiuj[:,0,2] = 
-    #uiuj[:,1,2] = 
+    uiuj[:,0,2] = les_dsa.PointData['uw']
+    uiuj[:,1,2] = les_dsa.PointData['vw']
     uiuj[:,1,0] = uiuj[:,0,1]
     uiuj[:,2,0] = uiuj[:,0,2]
     uiuj[:,2,1] = uiuj[:,1,2]
@@ -528,7 +530,8 @@ def make_errors(les_vtk):
             A += -uiuj[:,i,j]*Sij[:,i,j] + (2.0/3.0)*tke*delij[:,i,j]*Sij[:,i,j]
             B += 2.0*Sij[:,i,j]*Sij[:,i,j]
     
-    nu_t = A/(B+1e-12)
+    Str = algs.sqrt(B) # magnitude of Sij strain tensor (used later)
+    nu_t = A/(B+small)
     e_raw[:,err] = nu_t
     
     index = algs.where(nu_t<0.0)
@@ -536,16 +539,16 @@ def make_errors(les_vtk):
     error_labels[err] = 'Negative eddy viscosity'
     err += 1
     
-    # Error metric 2: Reynolds stress aniostropy
-    ############################################
-    print('2: Reynolds stress anisotropy')
+    # Error metric 2/3: 2nd and 3rd invariants of aij
+    #################################################
+    print('2/3: Reynolds stress anisotropy, inv2 and inv3')
     aij  = np.zeros([les_nnode,3,3])
     inv2 = np.zeros(les_nnode)
     inv3 = np.zeros(les_nnode)
     
     for i in range(0,3):
         for j in range(0,3):
-            aij[:,i,j] = uiuj[:,i,j]/(2.0*tke+1e-12) - delij[:,i,j]/3.0
+            aij[:,i,j] = uiuj[:,i,j]/(2.0*tke+small) - delij[:,i,j]/3.0
     
     for i in range(0,3):
         for j in range(0,3):
@@ -553,21 +556,21 @@ def make_errors(les_vtk):
             for n in range(0,3):
                 inv3 += aij[:,i,j]*aij[:,i,n]*aij[:,j,n]
     
-    #e_raw[:,1] = inv2
-    e_raw[:,err] = inv3
-    
-#    index = algs.where(inv2>1.0/6.0)   #TODO - study what is best to use here. inv2, inv3, c1c etc...  # DATA1
-#    index = algs.where(algs.abs(inv3)>0.01)                                                            # DATA2
-    index = algs.where(algs.abs(inv3)>0.005)                                                           # DATA3
-#    index = algs.where((uiuj[:,0,0]/uiuj[:,2,2])>2.0)                                                   # DATA4
-#    index = algs.where((uiuj[:,1,1]/uiuj[:,2,2])>1.0)                                                   # DATA5
-
+    e_raw[:,err] = inv2
+    index = algs.where(inv2>1.0/6.0)
     e_bool[index,err] = 1
-    error_labels[err] = 'Stress anisotropy'
+    error_labels[err] = 'Stress anisotropy 2nd inv'
     err += 1
 
-    # Error metric 2: Negative Pk
+    e_raw[:,err] = inv3
+    index = algs.where(inv3>0.005)
+    e_bool[index,err] = 1
+    error_labels[err] = 'Stress anisotropy 3rd inv'
+    err += 1
+
+    # Error metric 4: Negative Pk
     ############################################
+    print('4: Negative Pk')
     A = np.zeros(les_nnode)
     for i in range(0,3):
         for j in range(0,3):
@@ -580,7 +583,27 @@ def make_errors(les_vtk):
     error_labels[err] = 'Negative Pk'
     err += 1
 
-    
+    # Error metric 5: 2-eqn Cmu constant
+    ############################################
+    print('5: 2-equation Cmu constant')
+    A = np.zeros(les_nnode)
+    for i in range(0,3):
+        for j in range(0,3):
+            A[:] += aij[:,i,j]*Sij[:,i,j]
+
+    Cmu = nu_t**2.0*(Str/(tke+small))**2.0
+    e_raw[:,err] = Cmu
+    allow_err = 0.25 #i.e. 10% err
+    Cmu_dist = algs.abs(Cmu - 0.09)
+#    index = algs.where(Cmu_dist>allow_err*0.09)
+    index = algs.where(Cmu>1.1*0.09)
+    e_bool[index,err] = 1
+    error_labels[err] = 'Cmu != 0.09'
+    err += 1
+
+    ab = ((uiuj[:,1,1]-uiuj[:,0,0])*U[:,0]*U[:,1] + uiuj[:,0,1]*(U[:,0]**2-U[:,1]**2))/(U[:,0]**2+U[:,1]**2)
+    e_raw[:,err] = ab
+
 #    # Error metric 3: Non-linearity
 #    ###############################
 #    print('3: Non-linearity')

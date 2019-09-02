@@ -5,7 +5,9 @@ from joblib import dump, load
 import matplotlib.pyplot as plt
 import vista
 from cfd2ml.base import CaseData
-from sklearn.metrics import precision_recall_curve, auc
+from cfd2ml.utilities import plot_precision_recall_threshold, plot_precision_recall_vs_threshold
+from sklearn.metrics import precision_recall_curve
+
 plt.rcParams.update({'font.size': 18})
 
 def predict(json):
@@ -18,6 +20,7 @@ def predict(json):
     datloc = json['data_location']
     cases  = json['data_cases']
     savloc = json['save_location']
+
     os.makedirs(savloc, exist_ok=True)
 
     compare_predict = False
@@ -26,29 +29,38 @@ def predict(json):
         target = json['prediction_accuracy']['target']
         type   = json['prediction_accuracy']['type']
 
+    thresh = 0.5
+    if (("prediction_threshold" in json)==True): 
+        thresh = json['prediction_threshold']
+
     # Read in ML model
     filename = model + '.joblib'
     print('\nReading model from ', filename)
     model = load(filename) 
+    cmap = plt.get_cmap('tab10')
+
+    # Open a figure axes
+    fig1, ax1 = plt.subplots() 
+    fig2, ax2 = plt.subplots()
 
     # Read in each X_data, predict Y, write predicted Y
-    caseno = 1
-    for case in cases:
+    for caseno, case in enumerate(cases):
         # Read in RANS (X) data
         filename = os.path.join(datloc,case+'_X.pkl')
         X_case = CaseData(filename)
 
         print('\n***********************')
-        print(' Case: ', caseno)
+        print(' Case %d: %s ' %(caseno+1,case) )
         print('***********************')
 
         # Predict HiFi (Y) data and store add to vtk
         Y_pred = CaseData(case + '_pred') 
-        Y_pred.pd = pd.Series(model.predict(X_case.pd)) # only need as numpy ndarray but convert to pd series for consistency 
+#        Y_pred.pd = pd.Series(model.predict(X_case.pd)) # only need as numpy ndarray but convert to pd series for consistency 
+        Y_prob = pd.Series(model.predict_proba(X_case.pd)[:,1]) # only need as numpy ndarray but convert to pd series for consistency 
+        Y_pred.pd = pd.Series(predict_with_threshold(Y_prob, thresh))
+
         Y_pred.vtk = vista.UnstructuredGrid(X_case.vtk.offset,X_case.vtk.cells,X_case.vtk.celltypes,X_case.vtk.points)
         Y_pred.vtk.point_arrays['Y_pred'] = Y_pred.pd.to_numpy()
-
-        Y_prob = pd.Series(model.predict_proba(X_case.pd)[:,1]) # only need as numpy ndarray but convert to pd series for consistency 
         Y_pred.vtk.point_arrays['Y_prob'] = Y_prob.to_numpy()
 
         # Read in true HiFi (Y) data and compare to predict
@@ -72,18 +84,21 @@ def predict(json):
             elif(type=='regression'):
                 quit('Regression not implemented yet')
 
-            precision, recall, _ = precision_recall_curve(Y_true.pd[target], Y_prob)
-            lab = 'Case %s AUC=%.4f' % (case, auc(recall, precision))
-            plt.step(recall, precision, label=lab)    
+            # Calc precision, recall and decision thresholds
+            precisions, recalls, thresholds = precision_recall_curve(Y_true.pd[target], Y_prob)
+            c = cmap(caseno)
+
+            # Plot precision-recall curve with current decision threshold marked
+            plot_precision_recall_threshold(precisions, recalls, thresholds, t=thresh, ax=ax1,c=c)
+
+            # Plot precision and recall vs decision threshold
+            plot_precision_recall_vs_threshold(precisions, recalls, thresholds,ax=ax2, c=c,t=thresh,case=case)
 
         filename = os.path.join(savloc,Y_pred.name + '.vtk')
         Y_pred.WriteVTK(filename)
 
-        caseno += 1
-
-    plt.legend()
-    plt.xlabel('Recall (Sensitivity)')
-    plt.ylabel('Precision')
+    ax1.legend()
+    ax2.legend()
     plt.show()
 
     print('\n-----------------------')
@@ -133,3 +148,18 @@ def confusion_labels(Y_pred, Y_true):
     confuse[FN] = 4
 
     return confuse
+
+def predict_with_threshold(y_scores, t):
+    """
+    This function adjusts class predictions based on the prediction threshold (t).
+    Will only work for binary classification problems.
+
+    Based on https://towardsdatascience.com/fine-tuning-a-classifier-in-scikit-learn-66e048c21e65
+
+    :param array-like or sparse matrix of shape = [n_samples]:
+        Prediction proba from binary classifier
+    :param float:
+        The decision threshold
+    """
+    return [1 if y >= t else 0 for y in y_scores]
+

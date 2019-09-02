@@ -64,6 +64,10 @@ def classify(json):
         nrows = len(X_data.index)
         print('Number of rows in dataset after sampling: = ', nrows)
 
+    # Write final combined data from all cases to file
+    X_data.to_csv(modelname + '_Xdat.csv',index=False)
+    Y_data.to_csv(modelname + '_Ydat.csv',index=False)
+
     # Train classifier
     rf_clf =  RF_classifier(X_data,Y_data[target],options=options) 
 
@@ -152,7 +156,7 @@ def RF_classifier(X_data,Y_data,options=None):
         print('\nUsing Leave-One-Group-Out cross validation on ', ngroup, ' groups')
     elif(cv_type=='kfold'):
         from sklearn.model_selection import StratifiedKFold
-        print('\nUsing 5-fold cross validation')
+        print('\nUsing 10-fold cross validation')
         k_fold = StratifiedKFold(n_splits=10, random_state=42,shuffle=True)
         cv = k_fold.split(X_data,Y_data)
 
