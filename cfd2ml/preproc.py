@@ -266,7 +266,7 @@ def preproc_RANS(q_data, e_data, clip=None, comp=False):
 def make_features(rans_vtk):
     from cfd2ml.utilities import build_cevm
 
-    small = np.finfo(float).tiny
+    small = np.cbrt(np.finfo(float).tiny)
 
     rans_nnode = rans_vtk.number_of_points
 
@@ -490,7 +490,7 @@ def make_features(rans_vtk):
 def make_errors(les_vtk):
     from tqdm import tqdm
 
-    small = np.finfo(float).tiny
+    small = np.cbrt(np.finfo(float).tiny)
 
     les_nnode = les_vtk.number_of_points
 
@@ -609,6 +609,7 @@ def make_errors(les_vtk):
             A[:] += aij[:,i,j]*Sij[:,i,j]
 
     Cmu = nu_t**2.0*(Str/(tke+small))**2.0
+
     e_raw[:,err] = Cmu
     allow_err = 0.25 #i.e. 10% err
     Cmu_dist = algs.abs(Cmu - 0.09)
@@ -618,8 +619,8 @@ def make_errors(les_vtk):
     error_labels[err] = 'Cmu != 0.09'
     err += 1
 
-    ab = ((uiuj[:,1,1]-uiuj[:,0,0])*U[:,0]*U[:,1] + uiuj[:,0,1]*(U[:,0]**2-U[:,1]**2))/(U[:,0]**2+U[:,1]**2)
-    e_raw[:,err] = ab
+#    ab = ((uiuj[:,1,1]-uiuj[:,0,0])*U[:,0]*U[:,1] + uiuj[:,0,1]*(U[:,0]**2-U[:,1]**2))/(U[:,0]**2+U[:,1]**2)
+#    e_raw[:,err] = ab
 
 #    # Error metric 3: Non-linearity
 #    ###############################
