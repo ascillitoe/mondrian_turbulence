@@ -86,24 +86,7 @@ def preproc_RANS_and_HiFi(q_data, e_data, type, clip=None,comp=False):
     rans_vtk = rans_vtk.threshold([1e-12,1e99],scalars='d')
     print('Number of nodes extracted = ', rans_nnode - rans_vtk.number_of_points)
     rans_nnode = rans_vtk.number_of_points
-    
-    # Clip mesh to given ranges   # TODO - move this to after gradient calcs!
-    if (clip is not None):
-        xclip_min = clip[0:3]
-        xclip_max = clip[3:6]
-        print('Clipping mesh to range: ', xclip_min, ' to ', xclip_max)
-        rans_vtk = rans_vtk.clip(normal='x', origin=xclip_min,invert=False)
-        rans_vtk = rans_vtk.clip(normal='x', origin=xclip_max,invert=True )
-        rans_vtk = rans_vtk.clip(normal='y', origin=xclip_min,invert=False)
-        rans_vtk = rans_vtk.clip(normal='y', origin=xclip_max,invert=True )
-        rans_vtk = rans_vtk.clip(normal='z', origin=xclip_min,invert=False)
-        rans_vtk = rans_vtk.clip(normal='z', origin=xclip_max,invert=True )
-        print('Number of nodes clipped = ', rans_nnode - rans_vtk.number_of_points)
-
-    rans_nnode = rans_vtk.number_of_points
     rans_ncell = rans_vtk.number_of_cells
-    print('New number of nodes = ', rans_nnode)
-    print('New number of cells = ', rans_ncell)
     
     # Initial processing of HiFi data
     ################################
@@ -156,6 +139,34 @@ def preproc_RANS_and_HiFi(q_data, e_data, type, clip=None,comp=False):
     if (rans_nnode!=les_nnode): quit('********** Warning: rans_nnode != les_nnode... Interpolation failed **********')
     if (rans_ncell!=les_ncell): quit('********** Warning: rans_ncell != les_ncell... Interpolation failed **********')
 
+
+    ###########################
+    # Clip mesh to given ranges (also do after features and metrics generated to prevent probs with gradients at new boundaries)
+    ###########################
+    if (clip is not None):
+        xclip_min = clip[0:3]
+        xclip_max = clip[3:6]
+        print('Clipping mesh to range: ', xclip_min, ' to ', xclip_max)
+        rans_vtk = rans_vtk.clip(normal='x', origin=xclip_min,invert=False)
+        rans_vtk = rans_vtk.clip(normal='x', origin=xclip_max,invert=True )
+        rans_vtk = rans_vtk.clip(normal='y', origin=xclip_min,invert=False)
+        rans_vtk = rans_vtk.clip(normal='y', origin=xclip_max,invert=True )
+        rans_vtk = rans_vtk.clip(normal='z', origin=xclip_min,invert=False)
+        rans_vtk = rans_vtk.clip(normal='z', origin=xclip_max,invert=True )
+        les_vtk = les_vtk.clip(normal='x', origin=xclip_min,invert=False)
+        les_vtk = les_vtk.clip(normal='x', origin=xclip_max,invert=True )
+        les_vtk = les_vtk.clip(normal='y', origin=xclip_min,invert=False)
+        les_vtk = les_vtk.clip(normal='y', origin=xclip_max,invert=True )
+        les_vtk = les_vtk.clip(normal='z', origin=xclip_min,invert=False)
+        les_vtk = les_vtk.clip(normal='z', origin=xclip_max,invert=True )
+        print('Number of nodes clipped = ', rans_nnode - rans_vtk.number_of_points)
+    rans_nnode = rans_vtk.number_of_points
+    rans_ncell = rans_vtk.number_of_cells
+    print('New number of nodes = ', rans_nnode)
+    print('New number of cells = ', rans_ncell)
+
+    # Get X and Y data back out of vtk objs after interp and clipping
+    q = rans_vtk.point_arrays['q']
     e_bool = les_vtk.point_arrays['boolean']
 
     #############################
