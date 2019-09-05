@@ -94,6 +94,10 @@ def print_cm(cm, labels, hide_zeroes=False, hide_diagonal=False, hide_threshold=
     columnwidth = max([len(x) for x in labels] + [5])  # 5 is value length
     empty_cell = " " * columnwidth
     # Print header
+    print("         Predicted")
+    print("         Off   On ")
+    print("True Off          ")
+    print("     On         \n")
     print("    " + empty_cell, end=" ")
     for label in labels:
         print("%{0}s".format(columnwidth) % label, end=" ")
