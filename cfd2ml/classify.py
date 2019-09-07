@@ -28,6 +28,10 @@ def classify(json):
         options    = json['options']
         if(("sample" in options)==True):
             sample = options['sample']
+        if(("features_to_drop" in options)==True):
+            features_to_drop = options['features_to_drop']
+        else:
+            features_to_drop = None
 
     # Read data
     X_data = pd.DataFrame()
@@ -54,19 +58,30 @@ def classify(json):
         X_data = X_data.append(X_case.pd,ignore_index=True)
         Y_data = Y_data.append(Y_case.pd,ignore_index=True)
 
-    # Randomly sample a % of the data
-    nrows = X_data.shape[0]
+    nrows = len(X_data.index)
     print('Original number of rows in dataset: = ', nrows)
+
+    # Remove duplicate observations
+    index = X_data.round(3).drop_duplicates().index
+    X_data = X_data.iloc[index].reset_index(drop=True)
+    Y_data = Y_data.iloc[index].reset_index(drop=True)
+    nrows = len(X_data.index)
+    print('Number of rows in dataset after removing duplicates: = ', nrows)
+
+    # Randomly sample a % of the data
     if(sample is not None):
         index = np.random.choice(X_data.index,int(sample*nrows))
-        X_data = X_data.iloc[index]
-        Y_data = Y_data.iloc[index]
+        X_data = X_data.iloc[index].reset_index(drop=True) 
+        Y_data = Y_data.iloc[index].reset_index(drop=True)
         nrows = len(X_data.index)
         print('Number of rows in dataset after sampling: = ', nrows)
 
     # Write final combined data from all cases to file
     X_data.to_csv(modelname + '_Xdat.csv',index=False)
     Y_data.to_csv(modelname + '_Ydat.csv',index=False)
+
+    if (features_to_drop is not None): 
+        X_data = X_data.drop(columns=features_to_drop)
 
     # Train classifier
     rf_clf =  RF_classifier(X_data,Y_data[target],options=options) 

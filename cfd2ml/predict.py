@@ -33,6 +33,11 @@ def predict(json):
     if (("prediction_threshold" in json)==True): 
         thresh = json['prediction_threshold']
 
+    if(("features_to_drop" in json)==True):
+        features_to_drop = json['features_to_drop']
+    else:
+        features_to_drop = None
+
     # Read in ML model
     filename = model + '.joblib'
     print('\nReading model from ', filename)
@@ -53,10 +58,14 @@ def predict(json):
         print(' Case %d: %s ' %(caseno+1,case) )
         print('***********************')
 
+        X_data = X_case.pd
+        if (features_to_drop is not None): 
+            X_data = X_data.drop(columns=features_to_drop)
+
         # Predict HiFi (Y) data and store add to vtk
         Y_pred = CaseData(case + '_pred') 
 #        Y_pred.pd = pd.Series(model.predict(X_case.pd)) # only need as numpy ndarray but convert to pd series for consistency 
-        Y_prob = pd.Series(model.predict_proba(X_case.pd)[:,1]) # only need as numpy ndarray but convert to pd series for consistency 
+        Y_prob = pd.Series(model.predict_proba(X_data)[:,1]) # only need as numpy ndarray but convert to pd series for consistency 
         Y_pred.pd = pd.Series(predict_with_threshold(Y_prob, thresh))
 
         Y_pred.vtk = vista.UnstructuredGrid(X_case.vtk.offset,X_case.vtk.cells,X_case.vtk.celltypes,X_case.vtk.points)
@@ -140,8 +149,8 @@ def confusion_labels(Y_pred, Y_true):
     confuse = np.zeros_like(true)
     TP = np.where((true==1) & (pred==1))
     TN = np.where((true==0) & (pred==0))
-    FP = np.where((true==1) & (pred==0))
-    FN = np.where((true==0) & (pred==1))
+    FP = np.where((true==0) & (pred==1))
+    FN = np.where((true==1) & (pred==0))
     confuse[TP] = 1
     confuse[TN] = 2
     confuse[FP] = 3

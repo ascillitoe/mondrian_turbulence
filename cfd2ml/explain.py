@@ -5,15 +5,12 @@ import os
 
 import matplotlib.pyplot as plt
 
-def permutation_importance(clf,X,Y,features,label,random_state=42):
+def permutation_importance(clf,X,Y,features,random_state=42):
     from eli5 import explain_weights, format_as_text
     from eli5.sklearn import PermutationImportance
     
     # Extract the classifier object from the clf multilearn object
-    index = Y.columns.to_list().index(label)
-    clf = clf.classifiers_[index]
     clf.verbose = False #Turn verbose off after this to tidy prints
-    Y = Y[label]
 
     # Calculate feature importances #TODO - how to pick out label from clf to print feature importances and pdp's for specified label
     perm = PermutationImportance(clf, random_state=random_state).fit(X, Y)
@@ -146,14 +143,10 @@ def pred_target_plot_inter(clf,X,Y,features,label,grid_ranges=None):
 
     return fig, ax
 
-def SHAP_values(clf,X,labels,label):
+def SHAP_values(clf,X):
     import shap 
 
-    print('\nFinding Shapley values for ' + label)
-
-    # Extract the classifier object from the clf multilearn object
-    index = labels.to_list().index(label)
-    clf = clf.classifiers_[index]
+    print('\nFinding Shapley values')
 
     clf.verbose = False #Turn verbose off after this to tidy prints
 
@@ -162,53 +155,40 @@ def SHAP_values(clf,X,labels,label):
     
     clf.verbose = True
 
-    print('FInished finding Shapley values for ' + label)
+    print('Finished finding Shapley values')
 
     return shap_values
 
 
-def SHAP_summary(X,feature_names,shap_values=None,clf=None,labels=None,label=None):
+def SHAP_summary(X,feature_names,shap_values):
     import shap
 
     print('Creating SHAP summary plot')
-
-    if(shap_values is None):
-        if(labels is None or label is None or clf is None):
-            quit('Stopping - Must provide clf, labels and label arguments to SHAP_summary if shap_values not provided')
-        shap_values = SHAP_values(clf,X,labels,label)
 
     # SHAP summary plot
     plt.figure()
     shap.summary_plot(shap_values[1],features=X,feature_names=feature_names,plot_type='violin',show=False)
 
-def SHAP_DepenContrib(X,feature_names,feature,shap_values=None,clf=None,labels=None,label=None,interact='auto'):
+def SHAP_DepenContrib(X,feature_names,feature,shap_values,interact='auto'):
     import shap
 
     print('Creating SHAP dependence contribution plot')
 
-    if(shap_values is None):
-        if(labels is None or label is None or clf is None):
-            quit('Stopping - Must provide clf, labels and label arguments to SHAP_summary if shap_values not provided')
-        shap_values = SHAP_values(clf,X,labels,label)
-
     # SHAP dependence contribution plots
-    plt.figure()
+#    plt.figure()
     shap.dependence_plot(feature, shap_values[1],features=X,feature_names=feature_names,show=False,interaction_index=interact)
 
-def SHAP_inter_values(clf,X,labels,label):
+def SHAP_inter_values(clf,X):
     import shap
 
-    print('\nFinding Shapley interaction values for ' + label)
+    print('\nFinding Shapley interaction values')
 
-    # Extract the classifier object from the clf multilearn object
-    index = labels.to_list().index(label)
-    clf = clf.classifiers_[index]
     clf.verbose = False #Turn verbose off after this to tidy prints
 
     explainer = shap.TreeExplainer(clf) # Create shap explainer object
     shap_inter_values = explainer.shap_interaction_values(X) # Calculate shap interaction values
 
-    print('FInished finding Shapley interaction values for ' + label)
+    print('Finished finding Shapley interaction values')
 
     return shap_inter_values
 
@@ -227,7 +207,7 @@ def SHAP_inter_grid(shap_inter_values,feature_names):
     plt.xticks(range(tmp2.shape[0]), feature_names[inds], rotation=50.4, horizontalalignment="left")
     plt.gca().xaxis.tick_top()
 
-def SHAP_force(clf,data,point,labels,label,type='bar',index=None): 
+def SHAP_force(clf,data,point,type='bar',index=None): 
     import shap
 
     print('\n SHAP force plot')
@@ -239,9 +219,6 @@ def SHAP_force(clf,data,point,labels,label,type='bar',index=None):
         X      = data.pd.iloc[index]  #index is array to index data with. i.e. if only sampling from test/train data
         points = data.vtk.points[index]
 
-    # Extract the classifier object from the clf multilearn object
-    index = labels.to_list().index(label)
-    clf = clf.classifiers_[index]
     clf.verbose = False #Turn verbose off after this to tidy prints
     explainer = shap.TreeExplainer(clf)
 
@@ -256,6 +233,7 @@ def SHAP_force(clf,data,point,labels,label,type='bar',index=None):
 
     datapoint = X.iloc[loc]
     shap_value = explainer.shap_values(datapoint) # Calculate shap values
+
     clf.verbose = True
 
     if(type=='force'):
@@ -265,9 +243,14 @@ def SHAP_force(clf,data,point,labels,label,type='bar',index=None):
         y_pos = np.arange(np.size(shap_value[1]))
         plt.figure()
         plt.barh(y_pos,shap_value[1][sort_ind],align='center')
+        yprob = clf.predict_proba(datapoint.to_numpy().reshape(1,-1))[0,1]
+        plt.title('Classifier probability = %.2f' %(yprob))
         ax = plt.gca()
+        # Set ytick labels
+        feature_names = X.columns[sort_ind]
+        yticklabel = ['%s = %.2f' %(feature,datapoint[feature]) for feature in feature_names]
         ax.set_yticks(y_pos)
-        ax.set_yticklabels(X.columns[sort_ind])
+        ax.set_yticklabels(yticklabel)
         ax.set_xlabel('SHAP value')
 
 

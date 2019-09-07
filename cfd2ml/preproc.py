@@ -511,7 +511,7 @@ def make_features(rans_vtk,Ls=1,Us=1,ros=1):
     rans_dsa = dsa.WrapDataObject(rans_vtk)
 
     print('Feature:')
-    nfeat = 14
+    nfeat = 15
     feat = 0
     q = np.empty([rans_nnode,nfeat])
     feature_labels = np.empty(nfeat, dtype='object')
@@ -786,6 +786,12 @@ def make_features(rans_vtk,Ls=1,Us=1,ros=1):
     feature_labels[feat] = 'Anisotropy of pressure hessian'
     feat += 1
 
+    # Feature 15: White noise
+    #########################
+    print('15: White noise')
+    q[:,feat] = np.random.uniform(low=-1.0, high=1.0, size=rans_nnode)
+    feature_labels[feat] = 'White noise'
+    feat += 1
 
     return q, feature_labels
 
