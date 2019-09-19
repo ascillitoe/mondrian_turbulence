@@ -5,7 +5,7 @@ import os
 
 import matplotlib.pyplot as plt
 
-def permutation_importance(clf,X,Y,features,random_state=42):
+def permutation_importance(clf,X,Y,features,random_state=42,scoring=None):
     from eli5 import explain_weights, format_as_text
     from eli5.sklearn import PermutationImportance
     
@@ -13,7 +13,7 @@ def permutation_importance(clf,X,Y,features,random_state=42):
     clf.verbose = False #Turn verbose off after this to tidy prints
 
     # Calculate feature importances #TODO - how to pick out label from clf to print feature importances and pdp's for specified label
-    perm = PermutationImportance(clf, random_state=random_state).fit(X, Y)
+    perm = PermutationImportance(clf, random_state=random_state,scoring=scoring).fit(X, Y)
     print(format_as_text(explain_weights(perm, feature_names = features),show=['feature_importances']))
 
     clf.verbose = True # reset
@@ -232,6 +232,7 @@ def SHAP_force(clf,data,point,type='bar',index=None):
     print('distance = ',dist[loc])
 
     datapoint = X.iloc[loc]
+    print(datapoint)
     shap_value = explainer.shap_values(datapoint) # Calculate shap values
 
     clf.verbose = True
@@ -239,19 +240,23 @@ def SHAP_force(clf,data,point,type='bar',index=None):
     if(type=='force'):
         shap.force_plot(explainer.expected_value[1], shap_value[1], datapoint,matplotlib=True,text_rotation=45,show=False) #indexed with 1 as plotting for true values (replace with 0 for false)
     elif(type=='bar'):
+        fs = 18
+        import matplotlib 
+        matplotlib.rc('xtick', labelsize=20) 
+        matplotlib.rc('ytick', labelsize=20)
         sort_ind = np.argsort(shap_value[1])[::-1]
         y_pos = np.arange(np.size(shap_value[1]))
         plt.figure()
         plt.barh(y_pos,shap_value[1][sort_ind],align='center')
         yprob = clf.predict_proba(datapoint.to_numpy().reshape(1,-1))[0,1]
-        plt.title('Classifier probability = %.2f' %(yprob))
+        plt.title('Classifier probability = %.2f' %(yprob),fontsize=fs)
         ax = plt.gca()
         # Set ytick labels
         feature_names = X.columns[sort_ind]
         yticklabel = ['%s = %.2f' %(feature,datapoint[feature]) for feature in feature_names]
         ax.set_yticks(y_pos)
-        ax.set_yticklabels(yticklabel)
-        ax.set_xlabel('SHAP value')
+        ax.set_yticklabels(yticklabel,fontsize=fs)
+        ax.set_xlabel('SHAP value',fontsize=fs)
 
 
 def viz_tree(clf,Xdata,Ydata,label,outfile,point=None):
