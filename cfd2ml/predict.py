@@ -64,13 +64,14 @@ def predict(json):
 
         # Predict HiFi (Y) data and store add to vtk
         Y_pred = CaseData(case + '_pred') 
-#        Y_pred.pd = pd.Series(model.predict(X_case.pd)) # only need as numpy ndarray but convert to pd series for consistency 
-        Y_prob = pd.Series(model.predict_proba(X_data)[:,1]) # only need as numpy ndarray but convert to pd series for consistency 
-        Y_pred.pd = pd.Series(predict_with_threshold(Y_prob, thresh))
-
         Y_pred.vtk = vista.UnstructuredGrid(X_case.vtk.offset,X_case.vtk.cells,X_case.vtk.celltypes,X_case.vtk.points)
+        if (type=='classification'):
+            Y_prob = pd.Series(model.predict_proba(X_data)[:,1]) # only need as numpy ndarray but convert to pd series for consistency 
+            Y_pred.pd = pd.Series(predict_with_threshold(Y_prob, thresh))
+            Y_pred.vtk.point_arrays['Y_prob'] = Y_prob.to_numpy()
+        elif(type=='regression'):
+            Y_pred.pd = pd.Series(model.predict(X_case.pd)) # only need as numpy ndarray but convert to pd series for consistency 
         Y_pred.vtk.point_arrays['Y_pred'] = Y_pred.pd.to_numpy()
-        Y_pred.vtk.point_arrays['Y_prob'] = Y_prob.to_numpy()
 
         # Read in true HiFi (Y) data and compare to predict
         if (compare_predict==True):
@@ -84,24 +85,24 @@ def predict(json):
             # accuracy metrics
             if (type=='classification'):
                 predict_classifier_accuracy(Y_pred.pd,Y_true.pd[target])
+
+                # Write TP, TN, FP, FN to vtk
+                if (type=='classification'):
+                    Y_pred.vtk.point_arrays['confuse'] = confusion_labels(Y_pred.pd, Y_true.pd[target])
+
+                # Calc precision, recall and decision thresholds
+                precisions, recalls, thresholds = precision_recall_curve(Y_true.pd[target], Y_prob)
+                c = cmap(caseno)
+
+                # Plot precision-recall curve with current decision threshold marked
+                plot_precision_recall_threshold(precisions, recalls, thresholds, t=thresh, ax=ax1,c=c)
+
+                # Plot precision and recall vs decision threshold
+                plot_precision_recall_vs_threshold(precisions, recalls, thresholds,ax=ax2, c=c,t=thresh,case=case)
+
             elif(type=='regression'):
-                quit('Regression not implemented yet')
-
-            # Write TP, TN, FP, FN to vtk
-            if (type=='classification'):
-                Y_pred.vtk.point_arrays['confuse'] = confusion_labels(Y_pred.pd, Y_true.pd[target])
-            elif(type=='regression'):
-                quit('Regression not implemented yet')
-
-            # Calc precision, recall and decision thresholds
-            precisions, recalls, thresholds = precision_recall_curve(Y_true.pd[target], Y_prob)
-            c = cmap(caseno)
-
-            # Plot precision-recall curve with current decision threshold marked
-            plot_precision_recall_threshold(precisions, recalls, thresholds, t=thresh, ax=ax1,c=c)
-
-            # Plot precision and recall vs decision threshold
-            plot_precision_recall_vs_threshold(precisions, recalls, thresholds,ax=ax2, c=c,t=thresh,case=case)
+                predict_regressor_accuracy(Y_pred.pd,Y_true.pd[target])
+                Y_pred.vtk.point_arrays['error'] = local_error(Y_pred.pd, Y_true.pd[target])
 
         filename = os.path.join(savloc,Y_pred.name + '.vtk')
         Y_pred.WriteVTK(filename)
@@ -113,7 +114,11 @@ def predict(json):
     print('\n-----------------------')
     print('Finished prediction')
     print('-----------------------')
+
+def local_error(Y_pred,Y_true):
     
+
+    return err
 
 def predict_classifier_accuracy(Y_pred,Y_true):
     # Y_pred and Y_true are pandas dataframes
@@ -138,6 +143,22 @@ def predict_classifier_accuracy(Y_pred,Y_true):
     confuse_mat = confusion_matrix(Y_true, Y_pred)
     print_cm(confuse_mat, ['Off','On'])
 
+def predict_regressor_accuracy(Y_pred,Y_true):
+    # Y_pred and Y_true are pandas dataframes
+ 
+    from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+
+    # r2 scores
+    f1score = r2_score(Y_true , Y_pred)
+    # Mean absolute error scores
+    MAEscore = mean_absolute_error(Y_true , Y_pred)
+    # Mean squared error scores
+    MSEscore = mean_squared_error(Y_true , Y_pred)
+
+    # Print validation scores (training scores are stored to print mean later, but not printed for each fold)
+    print('r2 score = %.2f %%' %(r2score*100) )
+    print('Mean absolute error = %.2f %%' %(MAEscore*100) )
+    print('Mean squared error = %.2f %%' %(MSEscore*100) )
 
 def confusion_labels(Y_pred, Y_true):
     # Y_pred and Y_true are vtk obj's

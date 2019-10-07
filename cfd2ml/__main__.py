@@ -3,6 +3,7 @@ def main():
     import json
     from cfd2ml.preproc import preproc_RANS_based
     from cfd2ml.classify import classify
+    from cfd2ml.regress import regress
     from cfd2ml.predict import predict
 
     # Get command-line arguments
@@ -29,6 +30,8 @@ def main():
         type = json_dat['type'] 
         if (type=="classification"):
             classify(json_dat)
+        elif (type=="regression"):
+            regress(json_dat)
 
     elif(task=='predict'):
         predict(json_dat)

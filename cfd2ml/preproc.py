@@ -814,7 +814,7 @@ def make_errors(les_vtk,Ls=1,Us=1,ros=1):
     nerr = 5
     err = 0
     e_raw  = np.zeros([les_nnode,nerr])
-    e_bool = np.zeros([les_nnode,nerr],dtype=int)
+    e_bool = np.zeros([les_nnode,nerr])
     error_labels = np.empty(nerr, dtype='object')
     
     # Copy Reynolds stresses to tensor

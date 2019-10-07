@@ -9,12 +9,12 @@ import matplotlib.pyplot as plt
 
 from cfd2ml.base import CaseData
 
-def classify(json):
-    from cfd2ml.classify import RF_classifier
+def regress(json):
+    from cfd2ml.regress import RF_regressor
 
     print('\n-----------------------')
     print('Started training')
-    print('Type: Classification')
+    print('Type: Regression')
     print('-----------------------')
 
     modelname  = json['save_model']
@@ -84,19 +84,19 @@ def classify(json):
         X_data = X_data.drop(columns=features_to_drop)
 
     # Train classifier
-    rf_clf =  RF_classifier(X_data,Y_data[target],options=options) 
+    rf_regr =  RF_regressor(X_data,Y_data[target],options=options) 
 
     # Save classifier
     filename = modelname + '.joblib'
-    print('\nSaving classifer to ', filename)
-    dump(rf_clf, filename, protocol=2) 
+    print('\nSaving regressor to ', filename)
+    dump(rf_regr, filename, protocol=2) 
 
     print('\n-----------------------')
     print('Finished training')
     print('-----------------------')
 
-def RF_classifier(X_data,Y_data,options=None):
-    from sklearn.ensemble import RandomForestClassifier
+def RF_regressor(X_data,Y_data,options=None):
+    from sklearn.ensemble import RandomForestRegressor
 
     ####################
     # Parse user options
@@ -108,7 +108,7 @@ def RF_classifier(X_data,Y_data,options=None):
     RS_settings  = None
     accuracy = False
     cv_type = 'logo'
-    scoring = 'f1'
+    scoring = 'neg_mean_absolute_error'
 
     if (options is not None):
 
@@ -135,8 +135,7 @@ def RF_classifier(X_data,Y_data,options=None):
             accuracy = options['accuracy']
             if (accuracy==True):
                 from sklearn.model_selection import cross_validate
-                from sklearn.metrics import precision_recall_curve, auc, f1_score, accuracy_score, balanced_accuracy_score, confusion_matrix
-                from cfd2ml.utilities import print_cm
+                from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 
         if (("scoring" in options)==True):
             scoring = options['scoring']
@@ -176,26 +175,24 @@ def RF_classifier(X_data,Y_data,options=None):
         cv = k_fold.split(X_data,Y_data)
 
     #########################
-    # Training the classifier
+    # Training the regressor
     #########################
-    # TODO TODO TODO - improve accuracy by using balanced or weighted random forest
-    # (see https://statistics.berkeley.edu/sites/default/files/tech-reports/666.pdf)
     if(gridsearch==True):
         # Finding optimal hyperparameters with GridSearchCV
-        print('\n Performing GridSearchCV to find optimal hyperparameters for random forest classifier')
-        clf = RandomForestClassifier(**params,random_state=42)
+        print('\n Performing GridSearchCV to find optimal hyperparameters for random forest regressor')
+        regr = RandomForestRegressor(**params,random_state=42)
         if (cv_type=='logo'): cv = logo.split(X_data,Y_data,groups)
-        GS_clf = GridSearchCV(estimator=clf,param_grid=GS_params, cv=cv, scoring=scoring, iid=False, verbose=2, **GS_settings)
-        GS_clf.fit(X_data,Y_data)
+        GS_regr = GridSearchCV(estimator=regr,param_grid=GS_params, cv=cv, scoring=scoring, iid=False, verbose=2, **GS_settings)
+        GS_regr.fit(X_data,Y_data)
 
         # Write out results to file
-        scores_df = pd.DataFrame(GS_clf.cv_results_)#.sort_values(by='rank_test_score')
+        scores_df = pd.DataFrame(GS_regr.cv_results_)#.sort_values(by='rank_test_score')
         scores_df.to_csv('GridSearch_results.csv')
 
         # Pich out best results
-        best_params = GS_clf.best_params_
-        best_score  = GS_clf.best_score_
-        clf = GS_clf.best_estimator_  # (this clf has been fit to all of the X_data,Y_data)
+        best_params = GS_regr.best_params_
+        best_score  = GS_regr.best_score_
+        regr = GS_regr.best_estimator_  # (this regr has been fit to all of the X_data,Y_data)
 
         print('\nBest hyperparameters found:', best_params)
         print('\nScore with these hyperparameters:', best_score)
@@ -203,19 +200,19 @@ def RF_classifier(X_data,Y_data,options=None):
     elif(randomsearch==True):
         # Finding optimal hyperparameters with RandomSearchCV
         print('\n Performing RandomizedSearchCV to find optimal hyperparameters for random forest classifier')
-        clf = RandomForestClassifier(**params,random_state=42)
+        regr = RandomForestRegressor(**params,random_state=42)
         if (cv_type=='logo'): cv = logo.split(X_data,Y_data,groups)
-        RS_clf = RandomizedSearchCV(estimator=clf,param_distributions=RS_params, cv=cv, scoring=scoring,iid=False, verbose=2, error_score=np.nan, **RS_settings)
-        RS_clf.fit(X_data,Y_data)
+        RS_regr = RandomizedSearchCV(estimator=regr,param_distributions=RS_params, cv=cv, scoring=scoring,iid=False, verbose=2, error_score=np.nan, **RS_settings)
+        RS_regr.fit(X_data,Y_data)
         
         # Write out results to file
-        scores_df = pd.DataFrame(RS_clf.cv_results_)#.sort_values(by='rank_test_score')
+        scores_df = pd.DataFrame(RS_regr.cv_results_)#.sort_values(by='rank_test_score')
         scores_df.to_csv('RandomSearch_results.csv')
 
         # Pick out best results
-        best_params = RS_clf.best_params_
-        best_score  = RS_clf.best_score_
-        clf = RS_clf.best_estimator_  # (this clf has been fit to all of the X_data,Y_data)
+        best_params = RS_regr.best_params_
+        best_score  = RS_regr.best_score_
+        regr = RS_regr.best_estimator_  # (this regr has been fit to all of the X_data,Y_data)
 
         print('\nBest hyperparameters found:', best_params)
         print('\nScore with these hyperparameters:', best_score)
@@ -224,14 +221,12 @@ def RF_classifier(X_data,Y_data,options=None):
     else:
         # Train RF classifier with hyperparameters given by user
         print('\nTraining random forest classifer with given hyperparameters')
-        clf = RandomForestClassifier(**params)
-        clf.fit(X_data,Y_data)
+        regr = RandomForestRegressor(**params)
+        regr.fit(X_data,Y_data)
 
     # Cross validation accuracy metrics
     if(accuracy==True):
-        print('\nPerforming cross validation to determine train and test accuracy/error, and precision-recall curves')
-
-        #TODO - capability to decide on probablity threshold, and predict with chosen threshold
+        print('\nPerforming cross validation to determine train and test accuracy/error')
 
         # Get generator object depending on cv strategy
         if (cv_type=='logo'): 
@@ -241,15 +236,15 @@ def RF_classifier(X_data,Y_data,options=None):
 
         fig1, ax1 = plt.subplots()
 
+        from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+
         # Init lists
-        y_real   = []
-        y_proba  = []
-        train_f1 = []
-        test_f1  = []
-        train_A  = []
-        test_A   = []
-        train_BA = []
-        test_BA  = []
+        train_r2  = []
+        test_r2   = []
+        train_MAE = []
+        test_MAE  = []
+        train_MSE = []
+        test_MSE  = []
 
         # Loop through CV folds
         i = 0
@@ -258,25 +253,25 @@ def RF_classifier(X_data,Y_data,options=None):
             Y_train, Y_test = Y_data.iloc[train_index], Y_data.iloc[test_index]
 
             # Train classifier
-            clf_cv = clf
-            clf_cv.fit(X_train, Y_train)
+            regr_cv = regr
+            regr_cv.fit(X_train, Y_train)
 
             # Predict Y
-            Y_pred_train = clf_cv.predict(X_train)
-            Y_pred_test  = clf_cv.predict(X_test )
+            Y_pred_train = regr_cv.predict(X_train)
+            Y_pred_test  = regr_cv.predict(X_test )
 
-            # F1 scores
-            f1score = f1_score(Y_test , Y_pred_test)
-            train_f1.append(f1_score(Y_train, Y_pred_train) )
-            test_f1.append(f1score)
-            # Accuracy scores
-            Ascore = accuracy_score(Y_test , Y_pred_test)
-            train_A.append(accuracy_score(Y_train, Y_pred_train) )
-            test_A.append(Ascore)
-            # Balanced accuracy scores
-            BAscore = balanced_accuracy_score(Y_test , Y_pred_test)
-            train_BA.append(balanced_accuracy_score(Y_train, Y_pred_train) )
-            test_BA.append(BAscore)
+            # r2 scores
+            r2score = r2_score(Y_test , Y_pred_test)
+            train_r2.append(r2_score(Y_train, Y_pred_train) )
+            test_r2.append(r2score)
+            # Mean absolute error scores
+            MAEscore = mean_absolute_error(Y_test , Y_pred_test)
+            train_MAE.append(mean_absolute_error(Y_train, Y_pred_train) )
+            test_MAE.append(MAEscore)
+            # Mean squared error scores
+            MSEscore = mean_squared_error(Y_test , Y_pred_test)
+            train_MSE.append(mean_squared_error(Y_train, Y_pred_train) )
+            test_MSE.append(MSEscore)
 
             # Print validation scores (training scores are stored to print mean later, but not printed for each fold)
             if(cv_type=='logo'):
@@ -284,54 +279,23 @@ def RF_classifier(X_data,Y_data,options=None):
             elif(cv_type=='kfold'):
                 print('\nFold = ', i)
             print('-------------------')
-            print('F1 score = %.2f %%' %(f1score*100) )
-            print('Total error = %.2f %%' %((1.0-Ascore)*100) )
-            print('Per-class error = %.2f %%' %((1.0-BAscore)*100) )
-
-            # Print confusion matrix for this fold
-            print('Confusion matrix:')
-            confuse_mat = confusion_matrix(Y_test, Y_pred_test)
-            print_cm(confuse_mat, ['Off','On'])
-            
-            # Prediction probability based on X_test (used for precision-recall curves)
-            pred_proba = clf_cv.predict_proba(X_test)
-            precision, recall, _ = precision_recall_curve(Y_test, pred_proba[:,1])
-            lab = 'Fold %d AUC=%.4f' % (i+1, auc(recall, precision))
-            ax1.step(recall, precision, label=lab)
-            y_real.append(Y_test)
-            y_proba.append(pred_proba[:,1])
+            print('r2 score = %.2f %%' %(r2score*100) )
+            print('Mean absolute error = %.2f %%' %(MAEscore*100) )
+            print('Mean squared error = %.2f %%' %(MSEscore*100) )
 
             i += 1
 
-        # Calculate errors from accuracies
-        train_TE = 1.0 -  np.array(train_A)
-        test_TE  = 1.0 -  np.array(test_A)
-        train_CAE = 1.0 - np.array(train_BA)
-        test_CAE  = 1.0 - np.array(test_BA)
-
         # Print performance scores
         print('\nMean training scores:')
-        print('F1 score = %.2f %%' %(np.mean(train_f1)*100) )
-        print('Total error = %.2f %%' %(np.mean(train_TE)*100) )
-        print('Per-class error = %.2f %%' %(np.mean(train_CAE)*100) )
+        print('r2 score = %.2f %%' %(np.mean(train_f1)*100) )
+        print('Mean absolute error = %.2f %%' %(np.mean(train_MAE)*100) )
+        print('Mean squared error = %.2f %%' %(np.mean(train_MSE)*100) )
     
         print('\nMean validation scores:')
-        print('F1 score = %.2f %%' %(np.mean(test_f1)*100) )
-        print('Total error = %.2f %%' %(np.mean(test_TE)*100) )
-        print('Per-class error = %.2f %%' %(np.mean(test_CAE)*100) )
-
+        print('r2 score = %.2f %%' %(np.mean(test_f1)*100) )
+        print('Mean absolute error = %.2f %%' %(np.mean(test_MAE)*100) )
+        print('Mean squared error = %.2f %%' %(np.mean(test_MSE)*100) )
         
-        # Average precision-recall over folds, and plot curves
-        y_real = np.concatenate(y_real)
-        y_proba = np.concatenate(y_proba)
-        precision, recall, _ = precision_recall_curve(y_real, y_proba)
-        lab = 'Overall AUC=%.4f' % (auc(recall, precision))
-        ax1.step(recall, precision, label=lab, lw=2, color='black')
-        ax1.set_xlabel('Recall')
-        ax1.set_ylabel('Precision')
-        ax1.legend(loc='lower left', fontsize='small')
-        
-
         plt.show()
 
-    return clf
+    return regr
