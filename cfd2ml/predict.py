@@ -107,17 +107,17 @@ def predict(json):
         filename = os.path.join(savloc,Y_pred.name + '.vtk')
         Y_pred.WriteVTK(filename)
 
-    ax1.legend()
-    ax2.legend()
-    plt.show()
+    if (type=='classification'):
+        ax1.legend()
+        ax2.legend()
+        plt.show()
 
     print('\n-----------------------')
     print('Finished prediction')
     print('-----------------------')
 
 def local_error(Y_pred,Y_true):
-    
-
+    err = Y_pred - Y_true
     return err
 
 def predict_classifier_accuracy(Y_pred,Y_true):
@@ -149,7 +149,7 @@ def predict_regressor_accuracy(Y_pred,Y_true):
     from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 
     # r2 scores
-    f1score = r2_score(Y_true , Y_pred)
+    r2score = r2_score(Y_true , Y_pred)
     # Mean absolute error scores
     MAEscore = mean_absolute_error(Y_true , Y_pred)
     # Mean squared error scores

@@ -20,11 +20,9 @@ def main():
     ########################
     # Pre-processing task
     if (task=='preproc'):
-        type = json_dat['type'] 
-        if (type<=3):
-            preproc_RANS_based(json_dat,type)
-        elif (type==4):
-            preproc_LES_based(json_dat)
+        preproc_RANS_based(json_dat)
+#        elif (x_type==4):
+#            preproc_LES_based(json_dat)
 
     elif(task=='train'):
         type = json_dat['type'] 

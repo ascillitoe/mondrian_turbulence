@@ -9,18 +9,21 @@ from vtk.numpy_interface import dataset_adapter as dsa
 
 from cfd2ml.base import CaseData
 
-def preproc_RANS_based(json,type):
+def preproc_RANS_based(json):
     from cfd2ml.preproc import preproc_RANS_and_HiFi
     from cfd2ml.utilities import convert_rans_fields, convert_hifi_fields
 
     print('\n-----------------------')
     print('Started pre-processing')
-    if (type==1):
-        print('Type 1')
-    elif (type==2):
-        print('Type 2')
-    elif (type==3):
-        print('Type 3')
+    x_type = json['x_type'] 
+    y_type = json['y_type'] 
+
+    if (x_type==1):
+        print('Feature set 1')
+    elif (x_type==2):
+        print('Feature set 2')
+    elif (x_type==3):
+        print('Feature set 3')
     print('-----------------------')
 
     # Create output dir if needed
@@ -57,7 +60,7 @@ def preproc_RANS_based(json,type):
         Y_data.vtk = convert_hifi_fields(Y_data.vtk,arraynames)
 
         # Run preproc
-        X_data, Y_data = preproc_RANS_and_HiFi(X_data, Y_data, type, **options)
+        X_data, Y_data = preproc_RANS_and_HiFi(X_data, Y_data, x_type, y_type, **options)
 
         # Write data
         X_data.Write(os.path.join(outdir, id + '_X')) 
@@ -67,7 +70,7 @@ def preproc_RANS_based(json,type):
     print('Finished pre-processing')
     print('-----------------------')
 
-def preproc_RANS_and_HiFi(q_data, e_data, type, clip=None,comp=False,Ls=1,Us=1,ros=1):
+def preproc_RANS_and_HiFi(q_data, y_data, x_type, y_type, clip=None,comp=False,Ls=1,Us=1,ros=1):
    
     #################################
     # Initial processing of RANS data
@@ -94,7 +97,7 @@ def preproc_RANS_and_HiFi(q_data, e_data, type, clip=None,comp=False,Ls=1,Us=1,r
     ################################
     print('\nInitial processing of HiFi data')
     
-    les_vtk = e_data.vtk
+    les_vtk = y_data.vtk
     
     # Get basic info about mesh
     les_nnode = les_vtk.number_of_points
@@ -108,11 +111,11 @@ def preproc_RANS_and_HiFi(q_data, e_data, type, clip=None,comp=False,Ls=1,Us=1,r
     print('\nProcessing RANS data into features')
     print(  '----------------------------------')
 
-    if (type==1):
+    if (x_type==1):
         q, feature_labels = make_features_orig(rans_vtk)
-    elif (type==2):
+    elif (x_type==2):
         q, feature_labels = make_features(rans_vtk,Ls=Ls,Us=Us,ros=ros)
-    elif (type==3):
+    elif (x_type==3):
         q, feature_labels = make_features_inv(rans_vtk)
 
     # Store features in vtk obj
@@ -125,11 +128,11 @@ def preproc_RANS_and_HiFi(q_data, e_data, type, clip=None,comp=False,Ls=1,Us=1,r
     print('\nProcessing HiFi data into error metrics')
     print(  '--------------------------------------')
 
-    e_raw, e_bool, error_labels = make_errors(les_vtk,Ls=Ls,Us=Us,ros=ros)
+    y_raw, y_targ, target_labels = make_targets(les_vtk,y_type,Ls=Ls,Us=Us,ros=ros)
     
     # Store errors in vtk obj
-    les_vtk.point_arrays['raw'] = e_raw
-    les_vtk.point_arrays['boolean'] = e_bool
+    les_vtk.point_arrays['raw'] = y_raw
+    les_vtk.point_arrays['target'] = y_targ
      
     #####################################
     # Interpolate HiFi data onto RANS mesh (do after metrics are generated so Sij etc from fine mesh)
@@ -147,7 +150,7 @@ def preproc_RANS_and_HiFi(q_data, e_data, type, clip=None,comp=False,Ls=1,Us=1,r
     # Add Rij error between RANS and LES as an extra error metric (can only do after interp)
     #############################################################
     rans_les_uiuj_err(rans_vtk,les_vtk, 0.05,Ls=Ls,Us=Us)
-    error_labels = np.append(error_labels,'Rij error')
+    target_labels = np.append(target_labels,'Rij error')
 
     ###########################
     # Clip mesh to given ranges (also do after features and metrics generated to prevent probs with gradients at new boundaries)
@@ -176,14 +179,14 @@ def preproc_RANS_and_HiFi(q_data, e_data, type, clip=None,comp=False,Ls=1,Us=1,r
  
     # Get X and Y data back out of vtk objs after interp and clipping
     q = rans_vtk.point_arrays['q']
-    e_bool = les_vtk.point_arrays['boolean']
+    y_targ = les_vtk.point_arrays['target']
 
     #############################
     # Final checks and store data
     #############################
     # pandas dataframes
     q_data.pd = pd.DataFrame(q, columns=feature_labels)
-    e_data.pd = pd.DataFrame(e_bool, columns=error_labels)
+    y_data.pd = pd.DataFrame(y_targ, columns=target_labels)
 
     # Check for NaN's and flag them (by saving to q_nan in vtk with value=99)
     q_nansum =q_data.pd.isnull().sum().sum() 
@@ -192,22 +195,22 @@ def preproc_RANS_and_HiFi(q_data, e_data, type, clip=None,comp=False,Ls=1,Us=1,r
         q_nans = q_data.pd.fillna(99)
         rans_vtk.point_arrays['q_nan'] = q_nans
 
-    df = pd.DataFrame(e_raw)
-    e_nansum = df.isnull().sum().sum() 
-    if (e_nansum > 0):
-        print('********** Warning %d NaNs in Y data **********' %(e_nansum))
-        e_nans = e_data.pd.fillna(99)
-        les_vtk.point_arrays['e_raw_nan'] = e_nans
+    df = pd.DataFrame(y_raw)
+    y_nansum = df.isnull().sum().sum() 
+    if (y_nansum > 0):
+        print('********** Warning %d NaNs in Y data **********' %(y_nansum))
+        y_nans = y_data.pd.fillna(99)
+        les_vtk.point_arrays['y_raw_nan'] = y_nans
 
     # Put new vtk data back into vtk objects
     q_data.vtk = rans_vtk
-    e_data.vtk = les_vtk
+    y_data.vtk = les_vtk
    
 
-    return q_data, e_data
+    return q_data, y_data
 
 
-def preproc_RANS(q_data, e_data, clip=None, comp=False):
+def preproc_RANS(q_data, y_data, clip=None, comp=False):
 
     ###################
     # Read in RANS data
@@ -795,7 +798,7 @@ def make_features(rans_vtk,Ls=1,Us=1,ros=1):
 
     return q, feature_labels
 
-def make_errors(les_vtk,Ls=1,Us=1,ros=1):
+def make_targets(les_vtk,y_type,Ls=1,Us=1,ros=1):
     from tqdm import tqdm
 
     small = np.cbrt(np.finfo(float).tiny)
@@ -810,13 +813,19 @@ def make_errors(les_vtk,Ls=1,Us=1,ros=1):
     # Wrap vista object in dsa wrapper
     les_dsa = dsa.WrapDataObject(les_vtk)
 
-    print('Error metric:')
-    nerr = 5
-    err = 0
-    e_raw  = np.zeros([les_nnode,nerr])
-    e_bool = np.zeros([les_nnode,nerr])
-    error_labels = np.empty(nerr, dtype='object')
-    
+    if (y_type=='classification'):
+        ntarg = 5
+        y_targ = np.zeros([les_nnode,ntarg],dtype=int)
+        print('Classifier targets:')
+    elif (y_type=='regression'):
+        ntarg = 2
+        y_targ = np.zeros([les_nnode,ntarg],dtype=float)
+        print('regressor targets:')
+
+    y_raw  = np.zeros([les_nnode,ntarg])
+    target_labels = np.empty(ntarg, dtype='object')
+    targ = 0
+  
     # Copy Reynolds stresses to tensor
     uiuj = np.zeros([les_nnode,3,3])
     uiuj[:,0,0] = les_dsa.PointData['uu']
@@ -844,31 +853,8 @@ def make_errors(les_vtk,Ls=1,Us=1,ros=1):
     # Strain and vorticity tensors
     Sij = 0.5*(J+Jt)
     Oij = 0.5*(J-Jt)
-    
-    # Error metric 1: Negative eddy viscosity
-    #########################################
-    print('1: Negative eddy viscosity')
-    A = np.zeros(les_nnode)
-    B = np.zeros(les_nnode)
-    
-    for i in range(0,3):
-        for j in range(0,3):
-            A += -uiuj[:,i,j]*Sij[:,i,j] + (2.0/3.0)*tke*delij[:,i,j]*Sij[:,i,j]
-            B += 2.0*Sij[:,i,j]*Sij[:,i,j]
-    
-    Str = algs.sqrt(B) # magnitude of Sij strain tensor (used later)
-    nu_t = A/(B+small)
-    nu_t = nu_t/(Us*Ls)
-    e_raw[:,err] = nu_t
-    
-    index = algs.where(nu_t<0.0)
-    e_bool[index,err] = 1
-    error_labels[err] = 'Negative eddy viscosity'
-    err += 1
-    
-    # Error metric 2: 3nd invariant of aij
-    #################################################
-    print('2: Deviation from plane shear turbulence')
+  
+    # Anisotropy tensor and eigenvalues
     aij  = copy.deepcopy(Sij)*0.0
     inv2 = np.zeros(les_nnode)
     inv3 = np.zeros(les_nnode)
@@ -876,13 +862,13 @@ def make_errors(les_vtk,Ls=1,Us=1,ros=1):
     for i in range(0,3):
         for j in range(0,3):
             aij[:,i,j] = uiuj[:,i,j]/(2.0*tke+small) - delij[:,i,j]/3.0
-
+    
     # Get eigenvalues of aij
     eig = algs.eigenvalue(aij)
     eig1 = eig[:,0]
     eig2 = eig[:,1]
     eig3 = eig[:,2]
-
+    
     # Get coords on barycentric triangle from eigenvalues
     xc = [1.0, 0.0, 0.5] #x,y coords of corner of triangle
     yc = [0.0, 0.0, np.cos(np.pi/6.0)]
@@ -892,115 +878,140 @@ def make_errors(les_vtk,Ls=1,Us=1,ros=1):
     x0 = C1c*xc[0] + C2c*xc[1] + C3c*xc[2]
     y0 = C1c*yc[0] + C2c*yc[1] + C3c*yc[2]
 
-    # Get distance from plane shear line
-    p1 = (1/3,0)
-    p2 = (0.5,np.sqrt(3)/2)
-    dist = abs( (p2[1]-p1[1])*x0 - (p2[0]-p1[0])*y0 + p2[0]*p1[1] - p2[1]*p1[0] ) /  np.sqrt( (p2[1]-p1[1])**2 + (p2[0]-p1[0])**2 )  
-    e_raw[:,err] = dist
-    index = algs.where(dist>0.25)
+    if (y_type=='Classification'):
+        # Target 1: Negative eddy viscosity
+        #########################################
+        print('1: Negative eddy viscosity')
+        A = np.zeros(les_nnode)
+        B = np.zeros(les_nnode)
+        
+        for i in range(0,3):
+            for j in range(0,3):
+                A += -uiuj[:,i,j]*Sij[:,i,j] + (2.0/3.0)*tke*delij[:,i,j]*Sij[:,i,j]
+                B += 2.0*Sij[:,i,j]*Sij[:,i,j]
+        
+        Str = algs.sqrt(B) # magnitude of Sij strain tensor (used later)
+        nu_t = A/(B+small)
+        nu_t = nu_t/(Us*Ls)
+        y_raw[:,targ] = nu_t
+        
+        index = algs.where(nu_t<0.0)
+        y_targ[index,targ] = 1
+        target_labels[targ] = 'Negative eddy viscosity'
+        targ += 1
+        
+        # Target 2: Deviation from plane shear
+        #################################################
+        print('2: Deviation from plane shear turbulence')
+        # Get distance from plane shear line
+        p1 = (1/3,0)
+        p2 = (0.5,np.sqrt(3)/2)
+        dist = abs( (p2[1]-p1[1])*x0 - (p2[0]-p1[0])*y0 + p2[0]*p1[1] - p2[1]*p1[0] ) /  np.sqrt( (p2[1]-p1[1])**2 + (p2[0]-p1[0])**2 )  
+        y_raw[:,targ] = dist
+        index = algs.where(dist>0.25)
+    
+        y_targ[index,targ] = 1
+        target_labels[targ] = 'Deviation from plane shar turbulence'
+        targ += 1
+    
+        # Target 3: Anisotropy of turbulence
+        ##########################################
+        print('3: Anisotropy of turbulence')
+        Caniso = 1.0 - C3c
+        y_raw[:,targ] = Caniso
+        index = algs.where(Caniso>0.5)
+        y_targ[index,targ] = 1
+        target_labels[targ] = 'Stress anisotropy'
+        targ += 1
+    
+        # Target 4: Negative Pk
+        ############################################
+        print('4: Negative Pk')
+        A = np.zeros(les_nnode)
+        for i in range(0,3):
+            for j in range(0,3):
+                A[:] += (-uiuj[:,i,j] * J[:,i,j])
+    
+        A = A*Ls/Us**3 
+        y_raw[:,targ] = A
+        index = algs.where(A<-0.0005)
+    
+        y_targ[index,targ] = 1
+        target_labels[targ] = 'Negative Pk'
+        targ += 1
+    
+        # Target 5: 2-eqn Cmu constant
+        ############################################
+        print('5: 2-equation Cmu constant')
+        A = np.zeros(les_nnode)
+        for i in range(0,3):
+            for j in range(0,3):
+                A[:] += aij[:,i,j]*Sij[:,i,j]
+    
+        Cmu = nu_t**2.0*(Str/(tke+small))**2.0
+    
+        y_raw[:,targ] = Cmu
+        allow_err = 0.25 #i.e. 10% err
+        Cmu_dist = algs.abs(Cmu - 0.09)
+    #    index = algs.where(Cmu_dist>allow_err*0.09)
+        index = algs.where(Cmu>1.1*0.09)
+        y_targ[index,targ] = 1
+        target_labels[targ] = 'Cmu != 0.09'
+        targ += 1
+    
+    #    ab = ((uiuj[:,1,1]-uiuj[:,0,0])*U[:,0]*U[:,1] + uiuj[:,0,1]*(U[:,0]**2-U[:,1]**2))/(U[:,0]**2+U[:,1]**2)
+    #    y_raw[:,err] = ab
+    
+    #    # Target 3: Non-linearity
+    #    ###############################
+    #    print('3: Non-linearity')
+    #    
+    #    # Build cevm equation in form A*nut**3 + B*nut**2 + C*nut + D = 0
+    #    B, A = build_cevm(Sij,Oij)
+    #    B = B/(tke      +1e-12)
+    #    A = A/(tke**2.0 +1e-12)
+    #    
+    #    C = np.zeros_like(A)
+    #    D = np.zeros_like(A)
+    #    for i in range(0,3):
+    #        for j in range(0,3):
+    #            C += -2.0*Sij[:,i,j]*Sij[:,i,j]
+    #            D += (2.0/3.0)*tke*Sij[:,i,j]*delij[:,i,j] - uiuj[:,i,j]*Sij[:,i,j]
+    #    
+    #    nu_t_cevm = np.empty_like(nu_t)
+    #    for i in tqdm(range(0,les_nnode)):
+    #        # Find the roots of the cubic equation (i.e. potential values for nu_t_cevm)
+    #        roots = np.roots([A[i],B[i],C[i],D[i]])
+    #        roots_orig = roots
+    #    
+    #        # Remove complex solutions (with imaginary part > a small number, to allow for numerical error)
+    #        #roots = roots.real[abs(roots.imag)<1e-5]  #NOTE - Matches nu_t much better without this?!
+    #    
+    #        # Out of remaining solutions(s), pick one that is closest to linear nu_t
+    #        if(roots.size==0):
+    #            nu_t_cevm[i] = nu_t[i]
+    #        else:
+    #            nu_t_cevm[i] = roots.real[np.argmin( np.abs(roots - np.full(roots.size,nu_t[i])) )]
+    #    
+    #    normdiff = algs.abs(nu_t_cevm - nu_t) / (algs.abs(nu_t_cevm) + algs.abs(nu_t) + 1e-12)
+    #    y_raw[:,err] = nu_t_cevm
+    #    
+    #    index = algs.where(normdiff>0.15)
+    #    y_targ[index,err] = 1
+    #    error_labels[err] = 'Non-linearity'
+    #    err += 1
 
-#    for i in range(0,3):
-#        for j in range(0,3):
-#            inv2 += aij[:,i,j]*aij[:,j,i]
-#            for n in range(0,3):
-#                inv3 += aij[:,i,j]*aij[:,i,n]*aij[:,j,n]
-#    e_raw[:,err] = inv3
-#    index = algs.where(np.abs(inv3)>0.01)
+    elif (y_type=='regression'):
+        # Target 3: Anisotropy of turbulence
+        ##########################################
+        print('1: Anisotropy of turbulence')
+        Caniso = 1.0 - C3c
+        y_raw[:,targ] = Caniso
+        y_targ[:,targ] = Caniso
+        target_labels[targ] = 'Stress anisotropy'
+        targ += 1
 
-    e_bool[index,err] = 1
-    error_labels[err] = 'Deviation from plane shar turbulence'
-    err += 1
-
-    # Error metric 3: Anisotropy of turbulence
-    ##########################################
-    print('3: Anisotropy of turbulence')
-    Caniso = 1.0 - C3c
-    e_raw[:,err] = Caniso
-    index = algs.where(Caniso>0.5)
-    e_bool[index,err] = 1
-    error_labels[err] = 'Stress anisotropy'
-    err += 1
-
-
-    # Error metric 4: Negative Pk
-    ############################################
-    print('4: Negative Pk')
-    A = np.zeros(les_nnode)
-    for i in range(0,3):
-        for j in range(0,3):
-            A[:] += (-uiuj[:,i,j] * J[:,i,j])
-
-    A = A*Ls/Us**3 
-    e_raw[:,err] = A
-    index = algs.where(A<-0.0005)
-
-    e_bool[index,err] = 1
-    error_labels[err] = 'Negative Pk'
-    err += 1
-
-    # Error metric 5: 2-eqn Cmu constant
-    ############################################
-    print('5: 2-equation Cmu constant')
-    A = np.zeros(les_nnode)
-    for i in range(0,3):
-        for j in range(0,3):
-            A[:] += aij[:,i,j]*Sij[:,i,j]
-
-    Cmu = nu_t**2.0*(Str/(tke+small))**2.0
-
-    e_raw[:,err] = Cmu
-    allow_err = 0.25 #i.e. 10% err
-    Cmu_dist = algs.abs(Cmu - 0.09)
-#    index = algs.where(Cmu_dist>allow_err*0.09)
-    index = algs.where(Cmu>1.1*0.09)
-    e_bool[index,err] = 1
-    error_labels[err] = 'Cmu != 0.09'
-    err += 1
-
-#    ab = ((uiuj[:,1,1]-uiuj[:,0,0])*U[:,0]*U[:,1] + uiuj[:,0,1]*(U[:,0]**2-U[:,1]**2))/(U[:,0]**2+U[:,1]**2)
-#    e_raw[:,err] = ab
-
-#    # Error metric 3: Non-linearity
-#    ###############################
-#    print('3: Non-linearity')
-#    
-#    # Build cevm equation in form A*nut**3 + B*nut**2 + C*nut + D = 0
-#    B, A = build_cevm(Sij,Oij)
-#    B = B/(tke      +1e-12)
-#    A = A/(tke**2.0 +1e-12)
-#    
-#    C = np.zeros_like(A)
-#    D = np.zeros_like(A)
-#    for i in range(0,3):
-#        for j in range(0,3):
-#            C += -2.0*Sij[:,i,j]*Sij[:,i,j]
-#            D += (2.0/3.0)*tke*Sij[:,i,j]*delij[:,i,j] - uiuj[:,i,j]*Sij[:,i,j]
-#    
-#    nu_t_cevm = np.empty_like(nu_t)
-#    for i in tqdm(range(0,les_nnode)):
-#        # Find the roots of the cubic equation (i.e. potential values for nu_t_cevm)
-#        roots = np.roots([A[i],B[i],C[i],D[i]])
-#        roots_orig = roots
-#    
-#        # Remove complex solutions (with imaginary part > a small number, to allow for numerical error)
-#        #roots = roots.real[abs(roots.imag)<1e-5]  #NOTE - Matches nu_t much better without this?!
-#    
-#        # Out of remaining solutions(s), pick one that is closest to linear nu_t
-#        if(roots.size==0):
-#            nu_t_cevm[i] = nu_t[i]
-#        else:
-#            nu_t_cevm[i] = roots.real[np.argmin( np.abs(roots - np.full(roots.size,nu_t[i])) )]
-#    
-#    normdiff = algs.abs(nu_t_cevm - nu_t) / (algs.abs(nu_t_cevm) + algs.abs(nu_t) + 1e-12)
-#    e_raw[:,err] = nu_t_cevm
-#    
-#    index = algs.where(normdiff>0.15)
-#    e_bool[index,err] = 1
-#    error_labels[err] = 'Non-linearity'
-#    err += 1
-
-    return e_raw, e_bool, error_labels
-
+    return y_raw, y_targ, target_labels
 
 def rans_les_uiuj_err(rans_vtk,les_vtk, thrsh,Ls=1,Us=1):
 
@@ -1076,11 +1087,11 @@ def rans_les_uiuj_err(rans_vtk,les_vtk, thrsh,Ls=1,Us=1):
     index = algs.where(err>thrsh)
     err_bool = np.zeros(nnode,dtype=int)
     err_bool[index] = 1 
-    e_raw = les_vtk.point_arrays['raw'] 
-    e_bool = les_vtk.point_arrays['boolean'] 
+    y_raw = les_vtk.point_arrays['raw'] 
+    y_targ = les_vtk.point_arrays['target'] 
 
-    les_vtk.point_arrays['raw'] = np.append(e_raw,err.reshape(-1,1),axis=1)
-    les_vtk.point_arrays['boolean'] = np.append(e_bool,err_bool.reshape(-1,1),axis=1)
+    les_vtk.point_arrays['raw'] = np.append(y_raw,err.reshape(-1,1),axis=1)
+    les_vtk.point_arrays['target'] = np.append(y_targ,err_bool.reshape(-1,1),axis=1)
 
 def make_features_inv(rans_vtk):
     from cfd2ml.utilities import eijk

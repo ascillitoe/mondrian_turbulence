@@ -5,8 +5,6 @@ import os
 
 from joblib import dump, load
 
-import matplotlib.pyplot as plt
-
 from cfd2ml.base import CaseData
 
 def regress(json):
@@ -234,8 +232,6 @@ def RF_regressor(X_data,Y_data,options=None):
         elif(cv_type=='kfold'):
             cv = k_fold.split(X_data,Y_data)  # Need to regen "Generator" object
 
-        fig1, ax1 = plt.subplots()
-
         from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 
         # Init lists
@@ -287,15 +283,14 @@ def RF_regressor(X_data,Y_data,options=None):
 
         # Print performance scores
         print('\nMean training scores:')
-        print('r2 score = %.2f %%' %(np.mean(train_f1)*100) )
+        print('r2 score = %.2f %%' %(np.mean(train_r2)*100) )
         print('Mean absolute error = %.2f %%' %(np.mean(train_MAE)*100) )
         print('Mean squared error = %.2f %%' %(np.mean(train_MSE)*100) )
     
         print('\nMean validation scores:')
-        print('r2 score = %.2f %%' %(np.mean(test_f1)*100) )
+        print('r2 score = %.2f %%' %(np.mean(test_r2)*100) )
         print('Mean absolute error = %.2f %%' %(np.mean(test_MAE)*100) )
         print('Mean squared error = %.2f %%' %(np.mean(test_MSE)*100) )
         
-        plt.show()
 
     return regr
