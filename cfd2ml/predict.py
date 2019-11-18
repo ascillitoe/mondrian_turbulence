@@ -16,7 +16,7 @@ def predict(json):
     print('Started prediction')
     print('-----------------------')
 
-    model  = json['model']
+    modelname  = json['model']
     datloc = json['data_location']
     cases  = json['data_cases']
     savloc = json['save_location']
@@ -38,8 +38,14 @@ def predict(json):
     else:
         features_to_drop = None
 
+    if(("uq" in json)==True):
+        uq = True
+        import forestci as fci
+    else:
+        uq = False
+
     # Read in ML model
-    filename = model + '.joblib'
+    filename = modelname + '.joblib'
     print('\nReading model from ', filename)
     model = load(filename) 
     cmap = plt.get_cmap('tab10')
@@ -58,19 +64,31 @@ def predict(json):
         print(' Case %d: %s ' %(caseno+1,case) )
         print('***********************')
 
-        X_data = X_case.pd
+        X_pred = X_case.pd
         if (features_to_drop is not None): 
-            X_data = X_data.drop(columns=features_to_drop)
+            X_pred = X_pred.drop(columns=features_to_drop)
 
         # Predict HiFi (Y) data and store add to vtk
         Y_pred = CaseData(case + '_pred') 
         Y_pred.vtk = vista.UnstructuredGrid(X_case.vtk.offset,X_case.vtk.cells,X_case.vtk.celltypes,X_case.vtk.points)
         if (type=='classification'):
-            Y_prob = pd.Series(model.predict_proba(X_data)[:,1]) # only need as numpy ndarray but convert to pd series for consistency 
+            Y_prob = pd.Series(model.predict_proba(X_pred)[:,1]) # only need as numpy ndarray but convert to pd series for consistency 
             Y_pred.pd = pd.Series(predict_with_threshold(Y_prob, thresh))
             Y_pred.vtk.point_arrays['Y_prob'] = Y_prob.to_numpy()
         elif(type=='regression'):
-            Y_pred.pd = pd.Series(model.predict(X_case.pd)) # only need as numpy ndarray but convert to pd series for consistency 
+            Y_pred.pd = pd.Series(model.predict(X_pred)) # only need as numpy ndarray but convert to pd series for consistency 
+            if(uq is True):
+                print('Calculating jackknife infinitesimal variance')
+                filename = modelname + '_Xdat.csv'
+                X_train = pd.read_csv(filename)
+                if (features_to_drop is not None): X_train = X_train.drop(columns=features_to_drop)
+                Y_var = fci.random_forest_error(model, X_train, X_pred,calibrate=True)
+                Y_sd = np.sqrt(np.maximum(Y_var,0))
+                Y_pred.vtk.point_arrays['Y_var'] = Y_sd
+                # Print out rms of var
+                sd_rms = np.sqrt(np.mean(Y_sd**2))
+                y_rms  = np.sqrt(np.mean(Y_pred.pd**2))
+                print('sd_rms/y_rms = ', 100*sd_rms/y_rms, '%')
         Y_pred.vtk.point_arrays['Y_pred'] = Y_pred.pd.to_numpy()
 
         # Read in true HiFi (Y) data and compare to predict
