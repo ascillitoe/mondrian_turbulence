@@ -4,11 +4,12 @@ import pandas as pd
 import os
 
 from joblib import dump, load
-
+import pickle
 from cfd2ml.base import CaseData
 
 def regress(json):
     from cfd2ml.regress import RF_regressor
+    from sklearn.feature_selection import VarianceThreshold
 
     print('\n-----------------------')
     print('Started training')
@@ -85,9 +86,13 @@ def regress(json):
     rf_regr =  RF_regressor(X_data,Y_data[target],options=options) 
 
     # Save classifier
-    filename = modelname + '.joblib'
+#    filename = modelname + '.joblib'
+    filename = modelname + '.p'
     print('\nSaving regressor to ', filename)
-    dump(rf_regr, filename, protocol=2) 
+#    if mondrian:
+    pickle.dump(rf_regr, open(filename, 'wb')) #joblib not working for mondrian forest for some reason...
+#    else:
+#        dump(rf_regr, filename, protocol=2) 
 
     print('\n-----------------------')
     print('Finished training')
@@ -107,6 +112,7 @@ def RF_regressor(X_data,Y_data,options=None):
     accuracy = False
     cv_type = 'logo'
     scoring = 'neg_mean_absolute_error'
+    mondrian = False
 
     if (options is not None):
 
@@ -140,6 +146,10 @@ def RF_regressor(X_data,Y_data,options=None):
 
         if (("cv_type" in options)==True):
             cv_type = options['cv_type']
+
+        if (("mondrian" in options)==True):
+            mondrian = options['mondrian']
+            if mondrian: from skgarden import MondrianForestRegressor
 
     ##############
     # Prepare data
@@ -177,8 +187,12 @@ def RF_regressor(X_data,Y_data,options=None):
     #########################
     if(gridsearch==True):
         # Finding optimal hyperparameters with GridSearchCV
-        print('\n Performing GridSearchCV to find optimal hyperparameters for random forest regressor')
-        regr = RandomForestRegressor(**params,random_state=42)
+        if mondrian:
+            print('\n Performing GridSearchCV to find optimal hyperparameters for mondrian forest regressor')
+            regr = MondrianForestRegressor(**params,random_state=42,bootstrap=False)
+        else:            
+            print('\n Performing GridSearchCV to find optimal hyperparameters for random forest regressor')
+            regr = RandomForestRegressor(**params,random_state=42)
         if (cv_type=='logo'): cv = logo.split(X_data,Y_data,groups)
         GS_regr = GridSearchCV(estimator=regr,param_grid=GS_params, cv=cv, scoring=scoring, iid=False, verbose=2, **GS_settings)
         GS_regr.fit(X_data,Y_data)
@@ -197,8 +211,12 @@ def RF_regressor(X_data,Y_data,options=None):
 
     elif(randomsearch==True):
         # Finding optimal hyperparameters with RandomSearchCV
-        print('\n Performing RandomizedSearchCV to find optimal hyperparameters for random forest classifier')
-        regr = RandomForestRegressor(**params,random_state=42)
+        if mondrian:
+            print('\n Performing RandomizedSearchCV to find optimal hyperparameters for mondrian forest classifier')
+            regr = MondrianForestRegressor(**params,random_state=42,bootstrap=False)
+        else:            
+            print('\n Performing RandomizedSearchCV to find optimal hyperparameters for random forest classifier')
+            regr = RandomForestRegressor(**params,random_state=42)
         if (cv_type=='logo'): cv = logo.split(X_data,Y_data,groups)
         RS_regr = RandomizedSearchCV(estimator=regr,param_distributions=RS_params, cv=cv, scoring=scoring,iid=False, verbose=2, error_score=np.nan, **RS_settings)
         RS_regr.fit(X_data,Y_data)
@@ -218,9 +236,17 @@ def RF_regressor(X_data,Y_data,options=None):
 
     else:
         # Train RF classifier with hyperparameters given by user
-        print('\nTraining random forest classifer with given hyperparameters')
-        regr = RandomForestRegressor(**params)
+        if mondrian:
+            print('\nTraining mondrian forest classifer with given hyperparameters')
+            regr = MondrianForestRegressor(**params,bootstrap=False)
+        else:            
+            print('\nTraining random forest classifer with given hyperparameters')
+            regr = RandomForestRegressor(**params)
         regr.fit(X_data,Y_data)
+        # TEMP 
+        np.save('X.npy',X_data)
+        np.save('Y.npy',Y_data)
+        # TEMP END
 
     # Cross validation accuracy metrics
     if(accuracy==True):

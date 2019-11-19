@@ -1,12 +1,15 @@
 import numpy as np
 import pandas as pd
 import os
-from joblib import dump, load
+#from joblib import dump, load
+import pickle
 import matplotlib.pyplot as plt
-import vista
+import pyvista as vista
 from cfd2ml.base import CaseData
 from cfd2ml.utilities import plot_precision_recall_threshold, plot_precision_recall_vs_threshold
 from sklearn.metrics import precision_recall_curve
+from sklearn.ensemble.forest import RandomForestRegressor
+from skgarden import MondrianForestRegressor
 
 plt.rcParams.update({'font.size': 18})
 
@@ -45,11 +48,17 @@ def predict(json):
         uq = False
 
     # Read in ML model
-    filename = modelname + '.joblib'
+#    filename = modelname + '.joblib'
+    filename = modelname + '.p'
     print('\nReading model from ', filename)
-    model = load(filename) 
+#    model = load(filename) 
+    model = pickle.load(open(filename, 'rb'))
+    # TEMP
+    X = np.load('X.npy')
+    Y = np.load('Y.npy')
+    model.fit(X,Y) 
+    # TEMP END
     cmap = plt.get_cmap('tab10')
-
     # Open a figure axes
     fig1, ax1 = plt.subplots() 
     fig2, ax2 = plt.subplots()
@@ -76,20 +85,32 @@ def predict(json):
             Y_pred.pd = pd.Series(predict_with_threshold(Y_prob, thresh))
             Y_pred.vtk.point_arrays['Y_prob'] = Y_prob.to_numpy()
         elif(type=='regression'):
-            Y_pred.pd = pd.Series(model.predict(X_pred)) # only need as numpy ndarray but convert to pd series for consistency 
+            if isinstance(model,RandomForestRegressor):
+                y_pred = model.predict(X_pred)
+            elif isinstance(model,MondrianForestRegressor) and uq is False: #if uq true prediction made below
+                y_pred = model.predict(X_pred)
+
+            # Uncertainty quantification
             if(uq is True):
-                print('Calculating jackknife infinitesimal variance')
                 filename = modelname + '_Xdat.csv'
                 X_train = pd.read_csv(filename)
                 if (features_to_drop is not None): X_train = X_train.drop(columns=features_to_drop)
-                Y_var = fci.random_forest_error(model, X_train, X_pred,calibrate=True)
-                Y_sd = np.sqrt(np.maximum(Y_var,0))
-                Y_pred.vtk.point_arrays['Y_var'] = Y_sd
+                if isinstance(model,RandomForestRegressor):
+                    print('Calculating jackknife infinitesimal variance')
+                    y_var = fci.random_forest_error(model, X_train, X_pred,calibrate=True)
+                    y_sd = np.sqrt(np.maximum(y_var,0))
+                elif isinstance(model,MondrianForestRegressor):
+                    print('Calculating mondrian forest posterior mean and standard deviation')
+                    y_pred, y_sd = model.predict(X_pred,return_std=True)
+
+                Y_pred.vtk.point_arrays['Y_std'] = y_sd
                 # Print out rms of var
-                sd_rms = np.sqrt(np.mean(Y_sd**2))
-                y_rms  = np.sqrt(np.mean(Y_pred.pd**2))
+                sd_rms = np.sqrt(np.mean(y_sd**2))
+                y_rms  = np.sqrt(np.mean(y_pred**2))
                 print('sd_rms/y_rms = ', 100*sd_rms/y_rms, '%')
-        Y_pred.vtk.point_arrays['Y_pred'] = Y_pred.pd.to_numpy()
+
+        Y_pred.pd = pd.Series(y_pred) # only need as numpy ndarray but convert to pd series for consistency 
+        Y_pred.vtk.point_arrays['Y_pred'] = y_pred
 
         # Read in true HiFi (Y) data and compare to predict
         if (compare_predict==True):

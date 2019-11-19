@@ -120,7 +120,7 @@ def print_cm(cm, labels, hide_zeroes=False, hide_diagonal=False, hide_threshold=
             print()
 
 def netcdf_to_vtk(cdffile,cdfscalars,vtkscalars):
-    import vista
+    import pyvista as vista
     from scipy.io.netcdf import netcdf_file as Dataset
 
     # check scalar lists same length

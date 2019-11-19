@@ -1,5 +1,5 @@
 # Doing this as want to store vista and pandas in one class, so can pass around between preproc, classifiy and predict easily
-import vista
+import pyvista as vista
 import pandas as pd
 import os
 import pickle
