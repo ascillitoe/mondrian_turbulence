@@ -1104,7 +1104,8 @@ def make_features_inv(rans_vtk):
     rans_dsa = dsa.WrapDataObject(rans_vtk)
 
     print('Feature:')
-    nfeat = 21 #50
+#    nfeat = 21
+    nfeat = 50
     q = np.empty([rans_nnode,nfeat])
     feature_labels = np.empty(nfeat, dtype='object')
     
@@ -1154,182 +1155,182 @@ def make_features_inv(rans_vtk):
     dkdx  = algs.gradient(tke)
     dkdx_h = dkdx / (eps/algs.sqrt(tke)) 
 
-    q[:,0]  = Sij_h[:,0,0]
-    q[:,1]  = Sij_h[:,1,1]
-    q[:,2]  = Sij_h[:,2,2]
-    q[:,3]  = Sij_h[:,0,1]
-    q[:,4]  = Sij_h[:,0,2]
-    q[:,5]  = Sij_h[:,1,2]
-    q[:,6]  = Oij_h[:,0,0]
-    q[:,7]  = Oij_h[:,1,1]
-    q[:,8]  = Oij_h[:,2,2]
-    q[:,9]  = Oij_h[:,0,1]
-    q[:,10] = Oij_h[:,0,2]
-    q[:,11] = Oij_h[:,1,2]
-    q[:,12] = dpdx_h[:,0]
-    q[:,13] = dpdx_h[:,1]
-    q[:,14] = dpdx_h[:,2]
-    q[:,15] = dkdx_h[:,0]
-    q[:,16] = dkdx_h[:,1]
-    q[:,17] = dkdx_h[:,2]
-    feature_labels[0]  = 'S11'
-    feature_labels[1]  = 'S22'
-    feature_labels[2]  = 'S33'
-    feature_labels[3]  = 'S12'
-    feature_labels[4]  = 'S13'
-    feature_labels[5]  = 'S23'
-    feature_labels[6]  = 'O11'
-    feature_labels[7]  = 'O22'
-    feature_labels[8]  = 'O33'
-    feature_labels[9]  = 'O12'
-    feature_labels[10] = 'O13'
-    feature_labels[11] = 'O23'
-    feature_labels[12] = 'dpdx'
-    feature_labels[13] = 'dpdy'
-    feature_labels[14] = 'dpdz'
-    feature_labels[15] = 'dkdx'
-    feature_labels[16] = 'dkdy'
-    feature_labels[17] = 'dkdz'
-    feat = 18
+#    q[:,0]  = Sij_h[:,0,0]
+#    q[:,1]  = Sij_h[:,1,1]
+#    q[:,2]  = Sij_h[:,2,2]
+#    q[:,3]  = Sij_h[:,0,1]
+#    q[:,4]  = Sij_h[:,0,2]
+#    q[:,5]  = Sij_h[:,1,2]
+#    q[:,6]  = Oij_h[:,0,0]
+#    q[:,7]  = Oij_h[:,1,1]
+#    q[:,8]  = Oij_h[:,2,2]
+#    q[:,9]  = Oij_h[:,0,1]
+#    q[:,10] = Oij_h[:,0,2]
+#    q[:,11] = Oij_h[:,1,2]
+#    q[:,12] = dpdx_h[:,0]
+#    q[:,13] = dpdx_h[:,1]
+#    q[:,14] = dpdx_h[:,2]
+#    q[:,15] = dkdx_h[:,0]
+#    q[:,16] = dkdx_h[:,1]
+#    q[:,17] = dkdx_h[:,2]
+#    feature_labels[0]  = 'S11'
+#    feature_labels[1]  = 'S22'
+#    feature_labels[2]  = 'S33'
+#    feature_labels[3]  = 'S12'
+#    feature_labels[4]  = 'S13'
+#    feature_labels[5]  = 'S23'
+#    feature_labels[6]  = 'O11'
+#    feature_labels[7]  = 'O22'
+#    feature_labels[8]  = 'O33'
+#    feature_labels[9]  = 'O12'
+#    feature_labels[10] = 'O13'
+#    feature_labels[11] = 'O23'
+#    feature_labels[12] = 'dpdx'
+#    feature_labels[13] = 'dpdy'
+#    feature_labels[14] = 'dpdz'
+#    feature_labels[15] = 'dkdx'
+#    feature_labels[16] = 'dkdy'
+#    feature_labels[17] = 'dkdz'
+#    feat = 18
 
-#    # Transform dpdx into ani-symmetric tensor Ap=-I x dpdx
-#    Ap = np.zeros([rans_nnode,3,3])
-#    I = np.eye(3)
-#    for a in range(3):
-#        for b in range(3):
-#            for c in range(3):
-#                for d in range(3):
-#                    Ap[:,a,b] -= eijk(b,c,d)*I[a,c]*dpdx_h[:,d]
-#
-#
-#    # Transform dkdx into ani-symmetric tensor Ak=-I x dkdx
-#    Ak = np.zeros([rans_nnode,3,3])
-#    for a in range(3):
-#        for b in range(3):
-#            for c in range(3):
-#                for d in range(3):
-#                    Ak[:,a,b] -= eijk(b,c,d)*I[a,c]*dkdx_h[:,d]
-#
-#    # Construct all invariant bases
-#    ###############################
-#    # Use numpy matmul to construct S^2, S^3 etc as we use these alot 
-#    # (matmul can be used as for arrays of dim>2 as "it is treated as a stack of matrices residing in the last two indexes and is broadcast accordingly")
-#    S = Sij_h
-#    O = Oij_h
-#    S2 = np.matmul(S,S)
-#    S3 = np.matmul(S2,S)
-#    O2 = np.matmul(O,O)
-#    Ap2 = np.matmul(Ap,Ap)
-#    Ak2 = np.matmul(Ak,Ak)
-#
-#    # 1-2
-#    q[:,0] = algs.trace(S2)
-#    feature_labels[0] = 'S2'
-#    q[:,1] = algs.trace(S3)
-#    feature_labels[1] = 'S3'
-#    # 3-5
-#    q[:,2] = algs.trace(O2)
-#    feature_labels[2] = 'O2'
-#    q[:,3] = algs.trace(Ap2)
-#    feature_labels[3] = 'Ap2'
-#    q[:,4] = algs.trace(Ak2)
-#    feature_labels[4] = 'Ak2'
-#    # 6-14
-#    q[:,5] = algs.trace(np.matmul(O2,S))
-#    feature_labels[5] = 'O2*S'
-#    q[:,6] = algs.trace(np.matmul(O2,S2))
-#    feature_labels[6] = 'O2*S2'
-#    q[:,7] = algs.trace(np.matmul(np.matmul(O2,S),np.matmul(O,S2)))
-#    feature_labels[7] = 'O2*S*O*S2'
-#    q[:,8] = algs.trace(np.matmul(Ap2,S))
-#    feature_labels[8] = 'Ap2*S'
-#    q[:,9] = algs.trace(np.matmul(Ap2,S2))
-#    feature_labels[9] = 'Ap2*S2'
-#    q[:,10] = algs.trace(np.matmul(np.matmul(Ap2,S),np.matmul(Ap,S2)))
-#    feature_labels[10] = 'Ap2*S*Ap*S2'
-#    q[:,11] = algs.trace(np.matmul(Ak2,S))
-#    feature_labels[11] = 'Ak2*S'
-#    q[:,12] = algs.trace(np.matmul(Ak2,S2))
-#    feature_labels[12] = 'Ak2*S2'
-#    q[:,13] = algs.trace(np.matmul(np.matmul(Ak2,S),np.matmul(Ak,S2)))
-#    feature_labels[13] = 'Ak2*S*Ak*S2'
-#
-#    # 15-17
-#    q[:,14] = algs.trace(np.matmul(O,Ap))
-#    feature_labels[14] = 'O*Ap'
-#    q[:,15] = algs.trace(np.matmul(Ap,Ak))
-#    feature_labels[15] = 'Ap*Ak'
-#    q[:,16] = algs.trace(np.matmul(O,Ak))
-#    feature_labels[16] = 'O*Ak'
-#
-#    # 18-41
-#    q[:,17] = algs.trace(np.matmul(O,np.matmul(Ap,S)))
-#    feature_labels[17] = 'O*Ap*S'
-#    q[:,18] = algs.trace(np.matmul(O,np.matmul(Ap,S2)))
-#    feature_labels[18] = 'O*Ap*S2'
-#    q[:,19] = algs.trace(np.matmul(O2,np.matmul(Ap,S)))
-#    feature_labels[19] = 'O2*Ap*S'
-#    q[:,20] = algs.trace(np.matmul(Ap2,np.matmul(O,S)))
-#    feature_labels[20] = 'Ap2*O*S'
-#    q[:,21] = algs.trace(np.matmul(O2,np.matmul(Ap,S2)))
-#    feature_labels[21] = 'O2*Ap*S2'
-#    q[:,22] = algs.trace(np.matmul(Ap2,np.matmul(O,S2)))
-#    feature_labels[22] = 'Ap2*O*S2'
-#    q[:,23] = algs.trace(np.matmul(np.matmul(O2,S),np.matmul(Ap,S2)))
-#    feature_labels[23] = 'O2*S*Ap*S2'
-#    q[:,24] = algs.trace(np.matmul(np.matmul(Ap2,S),np.matmul(O,S2)))
-#    feature_labels[24] = 'Ap2*S*O*S2'
-#
-#    q[:,25] = algs.trace(np.matmul(O,np.matmul(Ak,S)))
-#    feature_labels[25] = 'O*Ak*S'
-#    q[:,26] = algs.trace(np.matmul(O,np.matmul(Ak,S2)))
-#    feature_labels[26] = 'O*Ak*S2'
-#    q[:,27] = algs.trace(np.matmul(O2,np.matmul(Ak,S)))
-#    feature_labels[27] = 'O2*Ak*S'
-#    q[:,28] = algs.trace(np.matmul(Ak2,np.matmul(O,S)))
-#    feature_labels[28] = 'Ak2*O*S'
-#    q[:,29] = algs.trace(np.matmul(O2,np.matmul(Ak,S2)))
-#    feature_labels[29] = 'O2*Ak*S2'
-#    q[:,30] = algs.trace(np.matmul(Ak2,np.matmul(O,S2)))
-#    feature_labels[30] = 'Ak2*O*S2'
-#    q[:,31] = algs.trace(np.matmul(np.matmul(O2,S),np.matmul(Ak,S2)))
-#    feature_labels[31] = 'O2*S*Ak*S2'
-#    q[:,32] = algs.trace(np.matmul(np.matmul(Ak2,S),np.matmul(O,S2)))
-#    feature_labels[32] = 'Ak2*S*O*S2'
-#
-#    q[:,33] = algs.trace(np.matmul(Ap,np.matmul(Ak,S)))
-#    feature_labels[33] = 'Ap*Ak*S'
-#    q[:,34] = algs.trace(np.matmul(Ap,np.matmul(Ak,S2)))
-#    feature_labels[34] = 'Ap*Ak*S2'
-#    q[:,35] = algs.trace(np.matmul(Ap2,np.matmul(Ak,S)))
-#    feature_labels[35] = 'Ap2*Ak*S'
-#    q[:,36] = algs.trace(np.matmul(Ak2,np.matmul(Ap,S)))
-#    feature_labels[36] = 'Ak2*Ap*S'
-#    q[:,37] = algs.trace(np.matmul(Ap2,np.matmul(Ak,S2)))
-#    feature_labels[37] = 'Ap2*Ak*S2'
-#    q[:,38] = algs.trace(np.matmul(Ak2,np.matmul(Ap,S2)))
-#    feature_labels[38] = 'Ak2*Ap*S2'
-#    q[:,39] = algs.trace(np.matmul(np.matmul(Ap2,S),np.matmul(Ak,S2)))
-#    feature_labels[39] = 'Ap2*S*Ak*S2'
-#    q[:,40] = algs.trace(np.matmul(np.matmul(Ak2,S),np.matmul(Ap,S2)))
-#    feature_labels[40] = 'Ak2*S*Ap*S2'
-#
-##    # 42
-#    q[:,41] = algs.trace(np.matmul(O,np.matmul(Ap,Ak)))
-#    feature_labels[41] = 'O*Ap*Ak'
-#
-##    # 43-47
-#    q[:,42] = algs.trace(np.matmul(np.matmul(O,Ap),np.matmul(Ak,S)))
-#    feature_labels[42] = 'O*Ap*Ak*S'
-#    q[:,43] = algs.trace(np.matmul(np.matmul(O,Ak),np.matmul(Ap,S)))
-#    feature_labels[43] = 'O*Ak*Ap*S'
-#    q[:,44] = algs.trace(np.matmul(np.matmul(O,Ap),np.matmul(Ak,S2)))
-#    feature_labels[44] = 'O*Ap*Ak*S2'
-#    q[:,45] = algs.trace(np.matmul(np.matmul(O,Ak),np.matmul(Ap,S2)))
-#    feature_labels[45] = 'O*Ak*Ap*S2'
-#    q[:,46] = algs.trace(np.matmul(np.matmul(np.matmul(O,Ap),np.matmul(S,Ak)),S2))
-#    feature_labels[46] = 'O*Ap*S*Ak*S2'
-#   feat = 47
+    # Transform dpdx into ani-symmetric tensor Ap=-I x dpdx
+    Ap = np.zeros([rans_nnode,3,3])
+    I = np.eye(3)
+    for a in range(3):
+        for b in range(3):
+            for c in range(3):
+                for d in range(3):
+                    Ap[:,a,b] -= eijk(b,c,d)*I[a,c]*dpdx_h[:,d]
+
+
+    # Transform dkdx into ani-symmetric tensor Ak=-I x dkdx
+    Ak = np.zeros([rans_nnode,3,3])
+    for a in range(3):
+        for b in range(3):
+            for c in range(3):
+                for d in range(3):
+                    Ak[:,a,b] -= eijk(b,c,d)*I[a,c]*dkdx_h[:,d]
+
+    # Construct all invariant bases
+    ###############################
+    # Use numpy matmul to construct S^2, S^3 etc as we use these alot 
+    # (matmul can be used as for arrays of dim>2 as "it is treated as a stack of matrices residing in the last two indexes and is broadcast accordingly")
+    S = Sij_h
+    O = Oij_h
+    S2 = np.matmul(S,S)
+    S3 = np.matmul(S2,S)
+    O2 = np.matmul(O,O)
+    Ap2 = np.matmul(Ap,Ap)
+    Ak2 = np.matmul(Ak,Ak)
+
+    # 1-2
+    q[:,0] = algs.trace(S2)
+    feature_labels[0] = 'S2'
+    q[:,1] = algs.trace(S3)
+    feature_labels[1] = 'S3'
+    # 3-5
+    q[:,2] = algs.trace(O2)
+    feature_labels[2] = 'O2'
+    q[:,3] = algs.trace(Ap2)
+    feature_labels[3] = 'Ap2'
+    q[:,4] = algs.trace(Ak2)
+    feature_labels[4] = 'Ak2'
+    # 6-14
+    q[:,5] = algs.trace(np.matmul(O2,S))
+    feature_labels[5] = 'O2*S'
+    q[:,6] = algs.trace(np.matmul(O2,S2))
+    feature_labels[6] = 'O2*S2'
+    q[:,7] = algs.trace(np.matmul(np.matmul(O2,S),np.matmul(O,S2)))
+    feature_labels[7] = 'O2*S*O*S2'
+    q[:,8] = algs.trace(np.matmul(Ap2,S))
+    feature_labels[8] = 'Ap2*S'
+    q[:,9] = algs.trace(np.matmul(Ap2,S2))
+    feature_labels[9] = 'Ap2*S2'
+    q[:,10] = algs.trace(np.matmul(np.matmul(Ap2,S),np.matmul(Ap,S2)))
+    feature_labels[10] = 'Ap2*S*Ap*S2'
+    q[:,11] = algs.trace(np.matmul(Ak2,S))
+    feature_labels[11] = 'Ak2*S'
+    q[:,12] = algs.trace(np.matmul(Ak2,S2))
+    feature_labels[12] = 'Ak2*S2'
+    q[:,13] = algs.trace(np.matmul(np.matmul(Ak2,S),np.matmul(Ak,S2)))
+    feature_labels[13] = 'Ak2*S*Ak*S2'
+
+    # 15-17
+    q[:,14] = algs.trace(np.matmul(O,Ap))
+    feature_labels[14] = 'O*Ap'
+    q[:,15] = algs.trace(np.matmul(Ap,Ak))
+    feature_labels[15] = 'Ap*Ak'
+    q[:,16] = algs.trace(np.matmul(O,Ak))
+    feature_labels[16] = 'O*Ak'
+
+    # 18-41
+    q[:,17] = algs.trace(np.matmul(O,np.matmul(Ap,S)))
+    feature_labels[17] = 'O*Ap*S'
+    q[:,18] = algs.trace(np.matmul(O,np.matmul(Ap,S2)))
+    feature_labels[18] = 'O*Ap*S2'
+    q[:,19] = algs.trace(np.matmul(O2,np.matmul(Ap,S)))
+    feature_labels[19] = 'O2*Ap*S'
+    q[:,20] = algs.trace(np.matmul(Ap2,np.matmul(O,S)))
+    feature_labels[20] = 'Ap2*O*S'
+    q[:,21] = algs.trace(np.matmul(O2,np.matmul(Ap,S2)))
+    feature_labels[21] = 'O2*Ap*S2'
+    q[:,22] = algs.trace(np.matmul(Ap2,np.matmul(O,S2)))
+    feature_labels[22] = 'Ap2*O*S2'
+    q[:,23] = algs.trace(np.matmul(np.matmul(O2,S),np.matmul(Ap,S2)))
+    feature_labels[23] = 'O2*S*Ap*S2'
+    q[:,24] = algs.trace(np.matmul(np.matmul(Ap2,S),np.matmul(O,S2)))
+    feature_labels[24] = 'Ap2*S*O*S2'
+
+    q[:,25] = algs.trace(np.matmul(O,np.matmul(Ak,S)))
+    feature_labels[25] = 'O*Ak*S'
+    q[:,26] = algs.trace(np.matmul(O,np.matmul(Ak,S2)))
+    feature_labels[26] = 'O*Ak*S2'
+    q[:,27] = algs.trace(np.matmul(O2,np.matmul(Ak,S)))
+    feature_labels[27] = 'O2*Ak*S'
+    q[:,28] = algs.trace(np.matmul(Ak2,np.matmul(O,S)))
+    feature_labels[28] = 'Ak2*O*S'
+    q[:,29] = algs.trace(np.matmul(O2,np.matmul(Ak,S2)))
+    feature_labels[29] = 'O2*Ak*S2'
+    q[:,30] = algs.trace(np.matmul(Ak2,np.matmul(O,S2)))
+    feature_labels[30] = 'Ak2*O*S2'
+    q[:,31] = algs.trace(np.matmul(np.matmul(O2,S),np.matmul(Ak,S2)))
+    feature_labels[31] = 'O2*S*Ak*S2'
+    q[:,32] = algs.trace(np.matmul(np.matmul(Ak2,S),np.matmul(O,S2)))
+    feature_labels[32] = 'Ak2*S*O*S2'
+
+    q[:,33] = algs.trace(np.matmul(Ap,np.matmul(Ak,S)))
+    feature_labels[33] = 'Ap*Ak*S'
+    q[:,34] = algs.trace(np.matmul(Ap,np.matmul(Ak,S2)))
+    feature_labels[34] = 'Ap*Ak*S2'
+    q[:,35] = algs.trace(np.matmul(Ap2,np.matmul(Ak,S)))
+    feature_labels[35] = 'Ap2*Ak*S'
+    q[:,36] = algs.trace(np.matmul(Ak2,np.matmul(Ap,S)))
+    feature_labels[36] = 'Ak2*Ap*S'
+    q[:,37] = algs.trace(np.matmul(Ap2,np.matmul(Ak,S2)))
+    feature_labels[37] = 'Ap2*Ak*S2'
+    q[:,38] = algs.trace(np.matmul(Ak2,np.matmul(Ap,S2)))
+    feature_labels[38] = 'Ak2*Ap*S2'
+    q[:,39] = algs.trace(np.matmul(np.matmul(Ap2,S),np.matmul(Ak,S2)))
+    feature_labels[39] = 'Ap2*S*Ak*S2'
+    q[:,40] = algs.trace(np.matmul(np.matmul(Ak2,S),np.matmul(Ap,S2)))
+    feature_labels[40] = 'Ak2*S*Ap*S2'
+
+#    # 42
+    q[:,41] = algs.trace(np.matmul(O,np.matmul(Ap,Ak)))
+    feature_labels[41] = 'O*Ap*Ak'
+
+#    # 43-47
+    q[:,42] = algs.trace(np.matmul(np.matmul(O,Ap),np.matmul(Ak,S)))
+    feature_labels[42] = 'O*Ap*Ak*S'
+    q[:,43] = algs.trace(np.matmul(np.matmul(O,Ak),np.matmul(Ap,S)))
+    feature_labels[43] = 'O*Ak*Ap*S'
+    q[:,44] = algs.trace(np.matmul(np.matmul(O,Ap),np.matmul(Ak,S2)))
+    feature_labels[44] = 'O*Ap*Ak*S2'
+    q[:,45] = algs.trace(np.matmul(np.matmul(O,Ak),np.matmul(Ap,S2)))
+    feature_labels[45] = 'O*Ak*Ap*S2'
+    q[:,46] = algs.trace(np.matmul(np.matmul(np.matmul(O,Ap),np.matmul(S,Ak)),S2))
+    feature_labels[46] = 'O*Ap*S*Ak*S2'
+    feat = 47
 
     # Supplementary features
     ########################

@@ -36,7 +36,7 @@ def regress(json):
     X_data = pd.DataFrame()
     Y_data = pd.DataFrame()
 
-    # Read in each data set, append into single X and Y df's to pass to classifier. 
+    # Read in each data set, append into single X and Y df's to pass to regressor. 
     # "group" identifier column is added to X_case to id what case the data came from. 
     # (Used in LeaveOneGroupOut CV later)
     caseno = 1
@@ -82,10 +82,10 @@ def regress(json):
     if (features_to_drop is not None): 
         X_data = X_data.drop(columns=features_to_drop)
 
-    # Train classifier
+    # Train regressor
     rf_regr =  RF_regressor(X_data,Y_data[target],options=options) 
 
-    # Save classifier
+    # Save regressor
 #    filename = modelname + '.joblib'
     filename = modelname + '.p'
     print('\nSaving regressor to ', filename)
@@ -109,6 +109,7 @@ def RF_regressor(X_data,Y_data,options=None):
     GS_settings  = None
     randomsearch = False
     RS_settings  = None
+    feature_selection = False
     accuracy = False
     cv_type = 'logo'
     scoring = 'neg_mean_absolute_error'
@@ -121,6 +122,7 @@ def RF_regressor(X_data,Y_data,options=None):
 
         if (("grid_search" in options)==True):
             from sklearn.model_selection import GridSearchCV
+            import time
             gridsearch = True
             GS_params   = options['grid_search']['parameter_grid']
             if (("settings" in options['grid_search'])==True): GS_settings = options['grid_search']['settings'] 
@@ -128,12 +130,21 @@ def RF_regressor(X_data,Y_data,options=None):
         if (("random_search" in options)==True):
             from sklearn.model_selection import RandomizedSearchCV
             from cfd2ml.utilities import convert_param_dist
+            import time
             randomsearch = True
             RS_params, RS_Nmax   = convert_param_dist(options['random_search']['parameter_grid'])
             print('RS_Nmax = ', RS_Nmax)
             if (("settings" in options['random_search'])==True): RS_settings = options['random_search']['settings'] 
 
         if(randomsearch==True and gridsearch==True): quit('********** Stopping! grid_search and random_search both set *********')
+
+        if (("feature_selection" in options)==True):
+            from sklearn.feature_selection import RFECV
+            from cfd2ml.utilities import RFE_perm
+            feature_selection = True
+            if("step"         in options['feature_selection']): step         = options['feature_selection']['step']
+            if("min_features" in options['feature_selection']): min_features = options['feature_selection']['min_features']
+            if(randomsearch==True or gridsearch==True): quit('******** Stopping! grid/random_search and feature selection both set ********')
 
         if (("accuracy" in options)==True):
             accuracy = options['accuracy']
@@ -212,10 +223,10 @@ def RF_regressor(X_data,Y_data,options=None):
     elif(randomsearch==True):
         # Finding optimal hyperparameters with RandomSearchCV
         if mondrian:
-            print('\n Performing RandomizedSearchCV to find optimal hyperparameters for mondrian forest classifier')
+            print('\n Performing RandomizedSearchCV to find optimal hyperparameters for mondrian forest regressor')
             regr = MondrianForestRegressor(**params,random_state=42,bootstrap=False)
         else:            
-            print('\n Performing RandomizedSearchCV to find optimal hyperparameters for random forest classifier')
+            print('\n Performing RandomizedSearchCV to find optimal hyperparameters for random forest regressor')
             regr = RandomForestRegressor(**params,random_state=42)
         if (cv_type=='logo'): cv = logo.split(X_data,Y_data,groups)
         RS_regr = RandomizedSearchCV(estimator=regr,param_distributions=RS_params, cv=cv, scoring=scoring,iid=False, verbose=2, error_score=np.nan, **RS_settings)
@@ -235,18 +246,57 @@ def RF_regressor(X_data,Y_data,options=None):
 
 
     else:
-        # Train RF classifier with hyperparameters given by user
+        # Train RF regressor with hyperparameters given by user
         if mondrian:
-            print('\nTraining mondrian forest classifer with given hyperparameters')
+            print('\nTraining mondrian forest regressor with given hyperparameters')
             regr = MondrianForestRegressor(**params,bootstrap=False)
+            np.save('X.npy',X_data) #TODO - temp fix - pickle/joblib not saving training data properly for Mondrian forest. Must be loaded with model
+            np.save('Y.npy',Y_data)
         else:            
-            print('\nTraining random forest classifer with given hyperparameters')
+            print('\nTraining random forest regressor with given hyperparameters')
             regr = RandomForestRegressor(**params)
+
+        # Feature selection before final fit
+        if (feature_selection):
+            if (cv_type=='logo'): cv = logo.split(X_data,Y_data,groups)
+            [nfeats,scores,traintimes,predtimes], bestscore, bestfeat, featsets = RFE_perm(regr,X_data,Y_data,cv=cv,scoring=scoring,step=step,min_features=min_features,timing=True)
+
+            if (scoring=='neg_mean_absolute_error'):
+                scores = -scores
+                bestscore  = -bestscore
+            elif(scoring=='neg_mean_squared_error'):
+                scores = np.sqrt(-scores)
+                bestscore  = np.sqrt(-bestscore)
+            import matplotlib.pyplot as plt
+            plt.figure()
+            plt.plot(nfeats,100*scores,lw=2)
+            plt.xlabel('$N_{features}$')
+            plt.ylabel('Score (%)')
+            plt.figure()
+            plt.plot(nfeats,traintimes,label='Training',lw=2)
+            plt.plot(nfeats, predtimes,label='Prediction',lw=2)
+            plt.xlabel('$N_{features}$')
+            plt.ylabel('Time (s)')
+            plt.legend()
+            plt.show()
+
+            print('Best score: %.2f' %(100*bestscore))
+            print('Feature set:')
+            print(X_headers[bestfeat])
+
+            # Save results in CSV file
+            featselect_df = pd.DataFrame(featsets,columns=X_headers)
+            featselect_df['score'] = scores
+            featselect_df['traintimes'] = traintimes
+            featselect_df['predtimes'] = predtimes
+            featselect_df['nfeats'] = nfeats
+            featselect_df.to_csv('FeatSelect_results.csv')
+
+            # cut down to optimial feature set
+            X_data = X_data.iloc[:,bestfeat]
+
+        # Fit model to data
         regr.fit(X_data,Y_data)
-        # TEMP 
-        np.save('X.npy',X_data)
-        np.save('Y.npy',Y_data)
-        # TEMP END
 
     # Cross validation accuracy metrics
     if(accuracy==True):
@@ -274,7 +324,7 @@ def RF_regressor(X_data,Y_data,options=None):
             X_train, X_test = X_data.iloc[train_index], X_data.iloc[test_index]
             Y_train, Y_test = Y_data.iloc[train_index], Y_data.iloc[test_index]
 
-            # Train classifier
+            # Train regressor
             regr_cv = regr
             regr_cv.fit(X_train, Y_train)
 

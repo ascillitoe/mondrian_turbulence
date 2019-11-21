@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 def build_cevm(Sij,Oij):
     nnode = Sij.shape[0]
@@ -320,4 +321,67 @@ def eijk(i,j,k):
         e = 0
 
     return e
+
+def RFE_perm(model,X,y,min_features=1,step=1,cv=5,scoring='neg_mean_absolute_error',timing=False):
+    from eli5.sklearn import PermutationImportance
+    from types import GeneratorType
+    import time
+
+    # if pandas data then convert to numpy arrays
+    if isinstance(X, pd.DataFrame): X = X.to_numpy()
+    if isinstance(y, pd.Series): y = y.to_numpy()
+
+    # if cv is a generator convert to list so it doesn't disappear after first iter
+    if isinstance(cv,GeneratorType): cv = list(cv)
+
+    nfeat = np.shape(X)[1]
+    index = np.arange(nfeat)
+    bestscore = -99
+    niter = int(np.floor((nfeat - min_features)/step)+1)
+    scores = np.empty(niter)
+    nfeats = np.empty(niter)
+    traintime = np.empty(niter)
+    predtime  = np.empty(niter)
+    featsets = np.zeros([niter,nfeat])
+    for i, n in enumerate(range(nfeat,min_features-1,-step)):
+        if n==nfeat:  # first iter
+            newfeat = index
+            Xcut = X
+        else:
+            newfeat    = sortimport[:n]  # take n most important features from previous iter    
+            Xcut = Xcut[:,newfeat]
+        index = index[newfeat]
+
+        # Get train time and prediction time
+        if timing:
+            start = time.time()
+            model.fit(Xcut,y)
+            end = time.time()
+            traintime[i] = end - start
+            start = time.time()
+            model.predict(Xcut)
+            end = time.time()
+            predtime[i] = end - start
+
+        perm = PermutationImportance(model, random_state=42,scoring=scoring,cv=cv)
+        perm.fit(Xcut,y)
+        featimport = perm.feature_importances_
+        sortimport = np.argsort(featimport)[::-1]
+
+        score = np.mean(perm.scores_)
+        print('Number of features: %i, score: %.2f %%' %(n,100*np.abs(score)))
+    
+        scores[i] = score
+        nfeats[i] = n
+        featsets[i,index] = 1 
+    
+        if(score >= bestscore): #> or = because if equal with smaller nfeat, then better!
+            bestscore = score
+            bestfeat  = index
+
+    if timing:
+        return [nfeats,scores,traintime,predtime], bestscore, bestfeat, featsets
+    else:
+        return [nfeats,scores], bestscore, bestfeat, featsets
+
 
