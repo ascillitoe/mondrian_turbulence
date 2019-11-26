@@ -31,6 +31,11 @@ def regress(json):
             features_to_drop = options['features_to_drop']
         else:
             features_to_drop = None
+        if(("features_to_keep" in options)==True):
+            features_to_keep = options['features_to_keep']
+        else:
+            features_to_keep = None
+        if(features_to_drop and features_to_keep): quit('features_to_drop and features_to_keep both set')
 
     # Read data
     X_data = pd.DataFrame()
@@ -81,6 +86,9 @@ def regress(json):
 
     if (features_to_drop is not None): 
         X_data = X_data.drop(columns=features_to_drop)
+    elif (features_to_keep is not None):
+        features_to_keep.append('group')
+        X_data = X_data[features_to_keep]
 
     # Train regressor
     rf_regr =  RF_regressor(X_data,Y_data[target],options=options) 

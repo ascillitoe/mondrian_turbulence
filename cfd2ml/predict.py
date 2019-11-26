@@ -40,6 +40,11 @@ def predict(json):
         features_to_drop = json['features_to_drop']
     else:
         features_to_drop = None
+        if(("features_to_keep" in json)==True):
+            features_to_keep = json['features_to_keep']
+        else:
+            features_to_keep = None
+        if(features_to_drop and features_to_keep): quit('features_to_drop and features_to_keep both set')
 
     if(("uq" in json)==True):
         uq = True
@@ -54,10 +59,11 @@ def predict(json):
 #    model = load(filename) 
     model = pickle.load(open(filename, 'rb'))
     # TEMP
-    X = np.load('X.npy')
-    Y = np.load('Y.npy')
-    model.fit(X,Y) 
-    # TEMP END
+    if isinstance(model,MondrianForestRegressor):
+        X = np.load('X.npy')
+        Y = np.load('Y.npy')
+        model.fit(X,Y) 
+        # TEMP END
     cmap = plt.get_cmap('tab10')
     # Open a figure axes
     fig1, ax1 = plt.subplots() 
@@ -76,6 +82,8 @@ def predict(json):
         X_pred = X_case.pd
         if (features_to_drop is not None): 
             X_pred = X_pred.drop(columns=features_to_drop)
+        elif (features_to_keep is not None):
+            X_pred = X_pred[features_to_keep]
 
         # Predict HiFi (Y) data and store add to vtk
         Y_pred = CaseData(case + '_pred') 

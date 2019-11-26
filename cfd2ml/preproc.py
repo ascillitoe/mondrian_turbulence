@@ -1133,6 +1133,9 @@ def make_features_inv(rans_vtk):
     Snorm = algs.sqrt(Snorm) 
     Onorm = algs.sqrt(Onorm) 
 
+    #################################################
+    # Non-dim everything here. Either local or global
+    #################################################
     # Non-dim Sij by eps/k
     tke = rans_dsa.PointData['k']
     eps = rans_dsa.PointData['w']*tke
