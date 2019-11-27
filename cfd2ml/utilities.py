@@ -322,7 +322,8 @@ def eijk(i,j,k):
 
     return e
 
-def RFE_perm(model,X,y,min_features=1,step=1,cv=5,scoring='neg_mean_absolute_error',timing=False):
+def RFE_perm(model,X,y,feats,cv=5,scoring='neg_mean_absolute_error',timing=False):
+#def RFE_perm(model,X,y,min_features=1,step=1,cv=5,scoring='neg_mean_absolute_error',timing=False):
     from eli5.sklearn import PermutationImportance
     from types import GeneratorType
     import time
@@ -337,13 +338,15 @@ def RFE_perm(model,X,y,min_features=1,step=1,cv=5,scoring='neg_mean_absolute_err
     nfeat = np.shape(X)[1]
     index = np.arange(nfeat)
     bestscore = -99
-    niter = int(np.floor((nfeat - min_features)/step)+1)
+    niter = len(feats)
+#    niter = int(np.floor((nfeat - min_features)/step)+1)
     scores = np.empty(niter)
     nfeats = np.empty(niter)
     traintime = np.empty(niter)
     predtime  = np.empty(niter)
     featsets = np.zeros([niter,nfeat])
-    for i, n in enumerate(range(nfeat,min_features-1,-step)):
+#    for i, n in enumerate(range(nfeat,min_features-1,-step)):
+    for i, n in enumerate(feats):
         if n==nfeat:  # first iter
             newfeat = index
             Xcut = X

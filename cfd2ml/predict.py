@@ -104,7 +104,7 @@ def predict(json):
                 X_train = pd.read_csv(filename)
                 if (features_to_drop is not None): X_train = X_train.drop(columns=features_to_drop)
                 if isinstance(model,RandomForestRegressor):
-                    print('Calculating jackknife infinitesimal variance')
+                    print('Calculating infinitesimal jackknife variance')
                     y_var = fci.random_forest_error(model, X_train, X_pred,calibrate=True)
                     y_sd = np.sqrt(np.maximum(y_var,0))
                 elif isinstance(model,MondrianForestRegressor):

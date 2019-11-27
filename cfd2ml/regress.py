@@ -147,11 +147,11 @@ def RF_regressor(X_data,Y_data,options=None):
         if(randomsearch==True and gridsearch==True): quit('********** Stopping! grid_search and random_search both set *********')
 
         if (("feature_selection" in options)==True):
-            from sklearn.feature_selection import RFECV
             from cfd2ml.utilities import RFE_perm
             feature_selection = True
-            if("step"         in options['feature_selection']): step         = options['feature_selection']['step']
-            if("min_features" in options['feature_selection']): min_features = options['feature_selection']['min_features']
+            feats =  options['feature_selection']['feats']
+#            if("step"         in options['feature_selection']): step         = options['feature_selection']['step']
+#            if("min_features" in options['feature_selection']): min_features = options['feature_selection']['min_features']
             if(randomsearch==True or gridsearch==True): quit('******** Stopping! grid/random_search and feature selection both set ********')
 
         if (("accuracy" in options)==True):
@@ -267,7 +267,8 @@ def RF_regressor(X_data,Y_data,options=None):
         # Feature selection before final fit
         if (feature_selection):
             if (cv_type=='logo'): cv = logo.split(X_data,Y_data,groups)
-            [nfeats,scores,traintimes,predtimes], bestscore, bestfeat, featsets = RFE_perm(regr,X_data,Y_data,cv=cv,scoring=scoring,step=step,min_features=min_features,timing=True)
+#            [nfeats,scores,traintimes,predtimes], bestscore, bestfeat, featsets = RFE_perm(regr,X_data,Y_data,cv=cv,scoring=scoring,step=step,min_features=min_features,timing=True)
+            [nfeats,scores,traintimes,predtimes], bestscore, bestfeat, featsets = RFE_perm(regr,X_data,Y_data,feats,cv=cv,scoring=scoring,timing=True)
 
             if (scoring=='neg_mean_absolute_error'):
                 scores = -scores

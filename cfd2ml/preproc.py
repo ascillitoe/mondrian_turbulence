@@ -19,11 +19,19 @@ def preproc_RANS_based(json):
     y_type = json['y_type'] 
 
     if (x_type==1):
-        print('Feature set 1')
+        print('Feature set 1: Interpretable features')
     elif (x_type==2):
-        print('Feature set 2')
-    elif (x_type==3):
-        print('Feature set 3')
+        print('Feature set 2: Invarient features')
+
+    nondim = 'local' #default
+    if (("non-dim" in json)==True):
+        nondim = json['non-dim']
+        if nondim=='local':
+            print('Local feature non-dimensionalistion')
+        elif nondim=='global':
+            print('Global feature non-dimensionalistion')
+        else: 
+            quit('Invalid non-dim option')
     print('-----------------------')
 
     # Create output dir if needed
@@ -60,7 +68,7 @@ def preproc_RANS_based(json):
         Y_data.vtk = convert_hifi_fields(Y_data.vtk,arraynames)
 
         # Run preproc
-        X_data, Y_data = preproc_RANS_and_HiFi(X_data, Y_data, x_type, y_type, **options)
+        X_data, Y_data = preproc_RANS_and_HiFi(X_data, Y_data, x_type, y_type, nondim, **options)
 
         # Write data
         X_data.Write(os.path.join(outdir, id + '_X')) 
@@ -70,7 +78,7 @@ def preproc_RANS_based(json):
     print('Finished pre-processing')
     print('-----------------------')
 
-def preproc_RANS_and_HiFi(q_data, y_data, x_type, y_type, clip=None,comp=False,Ls=1,Us=1,ros=1):
+def preproc_RANS_and_HiFi(q_data, y_data, x_type, y_type, nondim, clip=None,comp=False,Ls=1,Us=1,ros=1):
    
     #################################
     # Initial processing of RANS data
@@ -112,11 +120,9 @@ def preproc_RANS_and_HiFi(q_data, y_data, x_type, y_type, clip=None,comp=False,L
     print(  '----------------------------------')
 
     if (x_type==1):
-        q, feature_labels = make_features_orig(rans_vtk)
+        q, feature_labels = make_features(rans_vtk,Ls=Ls,Us=Us,ros=ros, nondim=nondim)
     elif (x_type==2):
-        q, feature_labels = make_features(rans_vtk,Ls=Ls,Us=Us,ros=ros)
-    elif (x_type==3):
-        q, feature_labels = make_features_inv(rans_vtk)
+        q, feature_labels = make_features_inv(rans_vtk,Ls=Ls,Us=Us,ros=ros,nondim=nondim)
 
     # Store features in vtk obj
     ###########################
@@ -274,231 +280,7 @@ def preproc_RANS(q_data, y_data, clip=None, comp=False):
 
     return q_data
 
-def make_features_orig(rans_vtk):
-    from cfd2ml.utilities import build_cevm
-
-    small = np.cbrt(np.finfo(float).tiny)
-
-    rans_nnode = rans_vtk.number_of_points
-
-    delij = np.zeros([rans_nnode,3,3])
-    for i in range(0,3): 
-        delij[:,i,i] = 1.0
-
-    # Wrap vista object in dsa wrapper
-    rans_dsa = dsa.WrapDataObject(rans_vtk)
-
-    print('Feature:')
-    nfeat = 12
-    feat = 0
-    q = np.empty([rans_nnode,nfeat])
-    feature_labels = np.empty(nfeat, dtype='object')
-    
-    # Feature 1: non-dim Q-criterion
-    ################################
-    print('1: non-dim Q-criterion...')
-    # Velocity vector
-    U = rans_dsa.PointData['U'] # NOTE - Getting variables from dsa obj not vtk obj as want to use algs etc later
-    
-    # Velocity gradient tensor and its transpose
-    # J[:,i-1,j-1] is dUidxj
-    # Jt[:,i-1,j-1] is dUjdxi
-    Jt = algs.gradient(U)        # Jt is this one as algs uses j,i ordering
-    J  = algs.apply_dfunc(np.transpose,Jt,(0,2,1))
-    
-    # Strain and vorticity tensors
-    Sij = 0.5*(J+Jt)
-    Oij = 0.5*(J-Jt)
-    
-    # Frob. norm of Sij and Oij  (Snorm and Onorm are actually S^2 and O^2, sqrt needed to get norms)
-    Snorm = algs.sum(2.0*Sij**2,axis=1) # sum i axis
-    Snorm = algs.sum(     Snorm,axis=1) # sum previous summations i.e. along j axis
-    Onorm = algs.sum(2.0*Oij**2,axis=1) # sum i axis
-    Onorm = algs.sum(     Onorm,axis=1) # sum previous summations i.e. along j axis
-    
-    # Store q1
-    q[:,feat] = (Onorm - Snorm)/(Onorm + Snorm + small)
-    feature_labels[feat] = 'Q-Criterion'
-    feat += 1
-    
-    # clean up 
-    Snorm = algs.sqrt(Snorm) #revert to revert to real Snorm for use later
-    Onorm = algs.sqrt(Onorm) #revert to revert to real Onorm for use later
-    
-    # Feature 2: Turbulence intensity
-    #################################
-    print('2: Turbulence intensity')
-    tke = rans_dsa.PointData['k'] 
-    UiUi = algs.mag(U)**2.0
-    q[:,feat] = tke/(0.5*UiUi+tke+small)
-    feature_labels[feat] = 'Turbulence intensity'
-    feat += 1
-    
-    # Feature 3: Turbulence Reynolds number
-    #######################################
-    print('3: Turbulence Reynolds number')
-    nu = rans_dsa.PointData['mu_l']/rans_dsa.PointData['ro']
-    Red = (algs.sqrt(tke)*rans_dsa.PointData['d'])/(50.0*nu)
-    q[:,feat] = algs.apply_dfunc(np.minimum, Red, 2.0)
-    #Red = 0.09**0.25*algs.sqrt(tke)*rans_dsa.PointData['d']/nu
-    #q[:,feat] = algs.apply_dfunc(np.minimum, Red, 100.0)
-    feature_labels[feat] = 'Turbulence Re'
-    feat += 1
-    
-    # Feature 4: Pressure gradient along streamline
-    ###############################################
-    print('4: Stream-wise pressure gradient')
-    A = np.zeros(rans_nnode)
-    B = np.zeros(rans_nnode)
-    
-    dpdx  = algs.gradient(rans_dsa.PointData['p'])
-    
-    for k in range(0,3):
-        A += U[:,k]*dpdx[:,k] 
-    
-    for i in range(0,3):
-        for j in range(0,3):
-            B += U[:,i]*U[:,i]*dpdx[:,j]*dpdx[:,j]
-    
-    q[:,feat] = A/(algs.sqrt(B)+algs.abs(A)+small)
-    feature_labels[feat] = 'Stream-wise Pgrad'
-    feat += 1
-    
-    # Feature 5: Ratio of turb time scale to mean strain time scale
-    ###############################################################
-    print('5: Ratio of turb time scale to mean strain time scale')
-    A = 1.0/rans_dsa.PointData['w']  #Turbulent time scale (eps = k*w therefore also A = k/eps)
-    B = 1.0/Snorm
-    q[:,feat] = A/(A+B+small)
-    feature_labels[feat] = 'turb/strain time-scale'
-    feat += 1
-    
-    # Feature 6: Viscosity ratio
-    ############################
-    print('6: Viscosity ratio')
-    nu_t = rans_dsa.PointData['mu_t']/rans_dsa.PointData['ro']
-    q[:,feat] = nu_t/(100.0*nu + nu_t)
-    feature_labels[feat] = 'Viscosity ratio'
-    feat += 1
-    
-    # Feature 7: Ratio of pressure normal stresses to normal shear stresses
-    #######################################################################
-    print('7: Ratio of pressure normal stresses to normal shear stresses')
-    A = np.zeros(rans_nnode)
-    B = np.zeros(rans_nnode)
-    
-    for i in range(0,3):
-        A += dpdx[:,i]*dpdx[:,i]
-    
-    for k in range(0,3):
-        B += (0.5*rans_dsa.PointData['ro']*U[:,k]*J[:,k,k])**2.0
-    
-    #TODO - revisit this. Units don't line up with Ling's q7 definition.
-    #       Look at balance between shear stress and pressure grad in poisuille flow? 
-    #       Derive ratio from there? Surely must include viscosity in equation, and maybe d2u/dx2?
-    #du2dx = algs.gradient(U**2.0) 
-    #for k in range(0,3):
-    #    B += 0.5*rans_dsa.PointData['ro']*du2dx[:,k,k]*du2dx[:,k,k]
-    
-    q[:,feat] = algs.sqrt(A)/(algs.sqrt(A)+algs.sqrt(B)+small)
-    #q[:,6] = algs.sqrt(A)/(algs.sqrt(A)+algs.abs(B))
-    feature_labels[feat] = 'Pressure/shear stresses'
-    feat += 1
-    
-    # Feature 8: Vortex stretching
-    ##############################
-    print('8: Vortex stretching')
-    A = np.zeros(rans_nnode)
-    B = np.zeros(rans_nnode)
-    
-    vortvec = algs.vorticity(U)
-    
-    for j in range(0,3):
-        for i in range(0,3):
-            for k in range(0,3):
-                A += vortvec[:,j]*J[:,i,j]*vortvec[:,k]*J[:,i,k]
-    
-    B = Snorm
-    
-    q[:,feat] = algs.sqrt(A)/(algs.sqrt(A)+B+small)
-    feature_labels[feat] = 'Vortex stretching'
-    feat += 1
-    
-    # Feature 9: Marker of Gorle et al. (deviation from parallel shear flow)
-    ########################################################################
-    print('9: Marker of Gorle et al. (deviation from parallel shear flow)')
-    A = np.zeros(rans_nnode)
-    B = np.zeros(rans_nnode)
-    
-    for i in range(0,3):
-        for j in range(0,3):
-            A += U[:,i]*U[:,j]*J[:,i,j]
-    
-    for n in range(0,3):
-        for i in range(0,3):
-            for j in range(0,3):
-                for m in range(0,3):
-                    B += U[:,n]*U[:,n]*U[:,i]*J[:,i,j]*U[:,m]*J[:,m,j]
-    q[:,feat] = algs.abs(A)/(algs.sqrt(B)+algs.abs(A)+small)
-    feature_labels[feat] = 'Deviation from parallel shear'
-    feat += 1
-    
-    # Feature 10: Ratio of convection to production of k
-    ####################################################
-    print('10: Ratio of convection to production of k')
-    uiuj = (2.0/3.0)*tke*delij - 2.0*nu_t*Sij
-
-    dkdx  = algs.gradient(tke)
-    
-    A = np.zeros(rans_nnode)
-    B = np.zeros(rans_nnode)
-    
-    for i in range(0,3):
-        A += U[:,i]*dkdx[:,i] 
-    
-    for j in range(0,3):
-        for l in range(0,3):
-            B += uiuj[:,j,l]*Sij[:,j,l]
-    
-    q[:,feat] = A/(algs.abs(B)+algs.abs(A)+small)
-    feature_labels[feat] = 'Convection/production of k'
-    feat += 1
-    
-    # Feature 11: Ratio of total Reynolds stresses to normal Reynolds stresses
-    ##########################################################################
-    print('11: Ratio of total Reynolds stresses to normal Reynolds stresses')
-    # Frob. norm of uiuj
-    A = algs.sum(uiuj**2,axis=1) # sum i axis
-    A = algs.sum(      A,axis=1) # sum previous summations i.e. along j axis
-    A = algs.sqrt(A)
-    
-    B = tke
-    
-    q[:,feat] = A/(B + A + small)
-    feature_labels[feat] = 'total/normal stresses'
-    feat += 1
-    
-    # Feature 12: Cubic eddy viscosity comparision
-    ##############################################
-    print('12: Cubic eddy viscosity comparision')
-    
-    # Add quadratic and cubic terms to linear evm
-    cevm_2nd, cevm_3rd = build_cevm(Sij,Oij)
-    
-    uiujSij = np.zeros(rans_nnode)
-    for i in range(0,3):
-        for j in range(0,3):
-            uiujSij += uiuj[:,i,j]*Sij[:,i,j]
-    
-    uiujcevmSij = uiujSij + (cevm_2nd/tke)*nu_t**2.0 + (cevm_3rd/tke**2.0)*nu_t**3.0
-    
-    q[:,feat] = (uiujcevmSij-uiujSij) / (uiujcevmSij+uiujSij + small)
-    feature_labels[feat] = 'CEV comparison'
-    feat += 1
-
-    return q, feature_labels
-
-def make_features(rans_vtk,Ls=1,Us=1,ros=1):
+def make_features(rans_vtk,Ls=1,Us=1,ros=1,nondim='local'):
     from cfd2ml.utilities import build_cevm
 
     small = np.cbrt(np.finfo(float).tiny)
@@ -583,9 +365,15 @@ def make_features(rans_vtk,Ls=1,Us=1,ros=1):
 
     for k in range(0,3):
         A += U[:,k]*dpdx[:,k] 
-    A = A/Umag
 
-    q[:,feat] = A*Ls/Ps
+    if nondim=='global':
+        A = A/Umag
+        q[:,feat] = A*Ls/Ps
+    elif nondim=='local':
+        for i in range(0,3):
+            for j in range(0,3):
+                B += U[:,i]*U[:,i]*dpdx[:,j]*dpdx[:,j]
+        q[:,feat] = A/(algs.sqrt(B)+algs.abs(A)+small)
 
     feature_labels[feat] = 'Stream-wise Pgrad'
     feat += 1
@@ -632,27 +420,28 @@ def make_features(rans_vtk,Ls=1,Us=1,ros=1):
     # Feature 8: Marker of Gorle et al. (deviation from parallel shear flow)
     ########################################################################
     print('8: Marker of Gorle et al. (deviation from parallel shear flow)')
-    g = np.zeros([rans_nnode,3])
-    m = np.zeros(rans_nnode)
-
-    s = U/Umag
-
-    for j in range(3):
-        for i in range(3):
-            g[:,j] += s[:,i]*J[:,i,j]
-        m += g[:,j]*s[:,j]
-    m = np.abs(m)
-
-#    for i in range(0,3):
-#        for j in range(0,3):
-#            A += U[:,i]*U[:,j]*J[:,i,j]
-#    
-#    for n in range(0,3):
-#        for i in range(0,3):
-#            for j in range(0,3):
-#                for m in range(0,3):
-#                    B += U[:,n]*U[:,n]*U[:,i]*J[:,i,j]*U[:,m]*J[:,m,j]
-    q[:,feat] = m*Ls/Us  #algs.abs(A)/(algs.sqrt(B)+algs.abs(A)+small)
+    if nondim=='global':
+        g = np.zeros([rans_nnode,3])
+        m = np.zeros(rans_nnode)
+        s = U/Umag
+        for j in range(3):
+            for i in range(3):
+                g[:,j] += s[:,i]*J[:,i,j]
+            m += g[:,j]*s[:,j]
+        m = np.abs(m)
+        q[:,feat] = m*Ls/Us 
+    elif nondim=='local':
+        A = np.zeros(rans_nnode)
+        B = np.zeros(rans_nnode)
+        for i in range(0,3):
+            for j in range(0,3):
+                A += U[:,i]*U[:,j]*J[:,i,j]
+        for n in range(0,3):
+            for i in range(0,3):
+                for j in range(0,3):
+                    for m in range(0,3):
+                        B += U[:,n]*U[:,n]*U[:,i]*J[:,i,j]*U[:,m]*J[:,m,j]
+        q[:,feat] = algs.abs(A)/(algs.sqrt(B)+algs.abs(A)+small)
     feature_labels[feat] = 'Deviation from parallel shear'
     feat += 1
     
@@ -660,19 +449,14 @@ def make_features(rans_vtk,Ls=1,Us=1,ros=1):
     ####################################################
     print('9: Ratio of convection to production of k')
     uiuj = (2.0/3.0)*tke*delij - 2.0*nu_t*Sij
-
     dkdx  = algs.gradient(tke)
-    
     A = np.zeros(rans_nnode)
     B = np.zeros(rans_nnode)
-    
     for i in range(0,3):
         A += U[:,i]*dkdx[:,i] 
-    
     for j in range(0,3):
         for l in range(0,3):
             B += uiuj[:,j,l]*Sij[:,j,l]
-    
     q[:,feat] = A/(algs.abs(B)+small)
     feature_labels[feat] = 'Convection/production of k'
     feat += 1
@@ -684,9 +468,7 @@ def make_features(rans_vtk,Ls=1,Us=1,ros=1):
     A = algs.sum(uiuj**2,axis=1) # sum i axis
     A = algs.sum(      A,axis=1) # sum previous summations i.e. along j axis
     A = algs.sqrt(A)
-    
     B = tke
-    
     q[:,feat] = A/(B + small)
     feature_labels[feat] = 'total/normal stresses'
     feat += 1
@@ -697,14 +479,11 @@ def make_features(rans_vtk,Ls=1,Us=1,ros=1):
     
     # Add quadratic and cubic terms to linear evm
     cevm_2nd, cevm_3rd = build_cevm(Sij,Oij)
-    
     uiujSij = np.zeros(rans_nnode)
     for i in range(0,3):
         for j in range(0,3):
             uiujSij += uiuj[:,i,j]*Sij[:,i,j]
-    
     uiujcevmSij = uiujSij + (cevm_2nd/tke)*nu_t**2.0 + (cevm_3rd/tke**2.0)*nu_t**3.0
-    
     q[:,feat] = (uiujcevmSij-uiujSij) / (0.5*(np.abs(uiujcevmSij)+np.abs(uiujSij)) + small)
     feature_labels[feat] = 'CEV comparison'
     feat += 1
@@ -714,9 +493,17 @@ def make_features(rans_vtk,Ls=1,Us=1,ros=1):
     print('12: Stream-normal pressure gradient')
     A = algs.cross(U,dpdx)
     A = np.sqrt(A[:,0]**2 + A[:,1]**2 + A[:,2]**2)
-    A = A/Umag
 
-    q[:,feat] = A*Ls/Ps    #(0.5*ro*Umag**2 + algs.abs(A) + small)
+    if nondim=='global':
+        A = A/Umag
+        q[:,feat] = A*Ls/Ps
+    elif nondim=='local':
+        B = np.zeros(rans_nnode)
+        for i in range(0,3):
+            for j in range(0,3):
+                B += U[:,i]*U[:,i]*dpdx[:,j]*dpdx[:,j]
+        q[:,feat] = A/(A + algs.sqrt(B) + small) 
+
     feature_labels[feat] = 'Stream-normal Pgrad'
     feat += 1
 
@@ -1093,7 +880,7 @@ def rans_les_uiuj_err(rans_vtk,les_vtk, thrsh,Ls=1,Us=1):
     les_vtk.point_arrays['raw'] = np.append(y_raw,err.reshape(-1,1),axis=1)
     les_vtk.point_arrays['target'] = np.append(y_targ,err_bool.reshape(-1,1),axis=1)
 
-def make_features_inv(rans_vtk):
+def make_features_inv(rans_vtk,Ls=1,Us=1,ros=1,nondim='local'):
     from cfd2ml.utilities import eijk
 
     small = np.finfo(float).tiny
@@ -1109,9 +896,9 @@ def make_features_inv(rans_vtk):
     q = np.empty([rans_nnode,nfeat])
     feature_labels = np.empty(nfeat, dtype='object')
     
-    # Non-dim strain and vorticity
+    # strain and vorticity
     ##############################
-    print('Constructing non-dim strain and vorticity tensor')
+    print('Constructing strain and vorticity tensor')
     # Velocity vector
     U = rans_dsa.PointData['U'] # NOTE - Getting variables from dsa obj not vtk obj as want to use algs etc later
     
@@ -1133,30 +920,39 @@ def make_features_inv(rans_vtk):
     Snorm = algs.sqrt(Snorm) 
     Onorm = algs.sqrt(Onorm) 
 
+    ########################################
+    # Calculating pressure and tke gradients
+    ########################################
+    print('Calculating pressure and tke gradients')
+    tke = rans_dsa.PointData['k']
+    dkdx  = algs.gradient(tke)
+    dpdx  = algs.gradient(rans_dsa.PointData['p'])
+
     #################################################
     # Non-dim everything here. Either local or global
     #################################################
-    # Non-dim Sij by eps/k
-    tke = rans_dsa.PointData['k']
-    eps = rans_dsa.PointData['w']*tke
-    Sij_h = Sij / (eps/tke)
+    if nondim=='local':
+        # Non-dim Sij by eps/k
+        eps = rans_dsa.PointData['w']*tke
+        Sij_h = Sij / (eps/tke)
+    
+        # Non-dim Oij by eps/k
+        Oij_h = Oij / (eps/tke)
+    
+        # Non-dim pressure gradient
+        ro = rans_dsa.PointData['ro']
+        DUDt = U[:,0]*J[:,:,0] + U[:,1]*J[:,:,1] + U[:,2]*J[:,:,2]
+        dpdx_h = dpdx / ro*algs.mag(DUDt)
+    
+        # Non-dim tke gradient
+        dkdx_h = dkdx / (eps/algs.sqrt(tke)) 
 
-    # Non-dim Oij by eps/k
-    Oij_h = Oij / (eps/tke)
-
-    # Non-dim pressure gradient
-    ###########################
-    print('Constructing non-dim pressure gradient')
-    dpdx  = algs.gradient(rans_dsa.PointData['p'])
-    ro = rans_dsa.PointData['ro']
-    DUDt = U[:,0]*J[:,:,0] + U[:,1]*J[:,:,1] + U[:,2]*J[:,:,2]
-    dpdx_h = dpdx / ro*algs.mag(DUDt)
-
-    # Non-dim tke gradient
-    ######################
-    print('Constructing non-dim tke gradient')
-    dkdx  = algs.gradient(tke)
-    dkdx_h = dkdx / (eps/algs.sqrt(tke)) 
+    elif nondim=='global':
+        Ps = 0.5*ros*Us**2
+        Sij_h = Sij/(Us/Ls)
+        Oij_h = Oij/(Us/Ls)
+        dpdx_h = dpdx/(Ps/Ls)
+        dkdx_h = dkdx/(Us**2/Ls)
 
 #    q[:,0]  = Sij_h[:,0,0]
 #    q[:,1]  = Sij_h[:,1,1]
