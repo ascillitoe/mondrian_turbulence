@@ -933,26 +933,28 @@ def make_features_inv(rans_vtk,Ls=1,Us=1,ros=1,nondim='local'):
     #################################################
     if nondim=='local':
         # Non-dim Sij by eps/k
-        eps = rans_dsa.PointData['w']*tke
-        Sij_h = Sij / (eps/tke)
+        w = rans_dsa.PointData['w']#/0.09
+        eps = w*tke
+        Sij_h = Sij / w
     
         # Non-dim Oij by eps/k
-        Oij_h = Oij / (eps/tke)
+        Oij_h = Oij / w
     
         # Non-dim pressure gradient
         ro = rans_dsa.PointData['ro']
         DUDt = U[:,0]*J[:,:,0] + U[:,1]*J[:,:,1] + U[:,2]*J[:,:,2]
         dpdx_h = dpdx / ro*algs.mag(DUDt)
-    
+
         # Non-dim tke gradient
         dkdx_h = dkdx / (eps/algs.sqrt(tke)) 
 
-    elif nondim=='global':
-        Ps = 0.5*ros*Us**2
-        Sij_h = Sij/(Us/Ls)
-        Oij_h = Oij/(Us/Ls)
-        dpdx_h = dpdx/(Ps/Ls)
-        dkdx_h = dkdx/(Us**2/Ls)
+    # Global non-dim on top
+    Ps = ros*Us**2
+    Sij_h = Sij_h/(Us/Ls)
+    Oij_h = Oij_h/(Us/Ls)
+    dpdx_h = dpdx_h/(Ps/Ls)
+    dkdx_h = dkdx_h/(Us**2/Ls)
+
 
 #    q[:,0]  = Sij_h[:,0,0]
 #    q[:,1]  = Sij_h[:,1,1]

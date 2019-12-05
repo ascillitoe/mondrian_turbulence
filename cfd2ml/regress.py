@@ -122,6 +122,7 @@ def RF_regressor(X_data,Y_data,options=None):
     cv_type = 'logo'
     scoring = 'neg_mean_absolute_error'
     mondrian = False
+    search_std = False
 
     if (options is not None):
 
@@ -133,7 +134,9 @@ def RF_regressor(X_data,Y_data,options=None):
             import time
             gridsearch = True
             GS_params   = options['grid_search']['parameter_grid']
-            if (("settings" in options['grid_search'])==True): GS_settings = options['grid_search']['settings'] 
+            if (("settings" in options['grid_search'])==True): GS_settings = options['grid_search']['settings']
+            if (("search std" in options['grid_search'])==True):
+                search_std = options['grid_search']['search std']
 
         if (("random_search" in options)==True):
             from sklearn.model_selection import RandomizedSearchCV
@@ -209,6 +212,11 @@ def RF_regressor(X_data,Y_data,options=None):
         if mondrian:
             print('\n Performing GridSearchCV to find optimal hyperparameters for mondrian forest regressor')
             regr = MondrianForestRegressor(**params,random_state=42,bootstrap=False)
+            if search_std: # MESSY HACK! Ignore "best model etc" if using this
+                def my_scorer(model, X, y_true):
+                    y_pred, y_sd = model.predict(X,return_std=True)
+                    return np.mean(y_sd)
+                scoring=my_scorer
         else:            
             print('\n Performing GridSearchCV to find optimal hyperparameters for random forest regressor')
             regr = RandomForestRegressor(**params,random_state=42)
@@ -258,8 +266,6 @@ def RF_regressor(X_data,Y_data,options=None):
         if mondrian:
             print('\nTraining mondrian forest regressor with given hyperparameters')
             regr = MondrianForestRegressor(**params,bootstrap=False)
-            np.save('X.npy',X_data) #TODO - temp fix - pickle/joblib not saving training data properly for Mondrian forest. Must be loaded with model
-            np.save('Y.npy',Y_data)
         else:            
             print('\nTraining random forest regressor with given hyperparameters')
             regr = RandomForestRegressor(**params)

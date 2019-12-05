@@ -58,12 +58,16 @@ def predict(json):
     print('\nReading model from ', filename)
 #    model = load(filename) 
     model = pickle.load(open(filename, 'rb'))
-    # TEMP
-    if isinstance(model,MondrianForestRegressor):
-        X = np.load('X.npy')
-        Y = np.load('Y.npy')
-        model.fit(X,Y) 
-        # TEMP END
+    if isinstance(model,MondrianForestRegressor) or (isinstance(model,RandomForestRegressor) and uq is True): #training data needed in these instances
+        X_train = pd.read_csv(modelname + '_Xdat.csv')
+        Y_train = pd.read_csv(modelname + '_Ydat.csv')
+        if (features_to_drop is not None): 
+            X_train = X_train.drop(columns=features_to_drop)
+        elif (features_to_keep is not None):
+            X_train = X_train[features_to_keep]
+        #TODO - this required for now as pickle/joblib not saving fitted MF properly
+        if isinstance(model,MondrianForestRegressor):
+            model.fit(X_train,Y_train) 
     cmap = plt.get_cmap('tab10')
     # Open a figure axes
     fig1, ax1 = plt.subplots() 
@@ -100,22 +104,22 @@ def predict(json):
 
             # Uncertainty quantification
             if(uq is True):
-                filename = modelname + '_Xdat.csv'
-                X_train = pd.read_csv(filename)
-                if (features_to_drop is not None): X_train = X_train.drop(columns=features_to_drop)
                 if isinstance(model,RandomForestRegressor):
                     print('Calculating infinitesimal jackknife variance')
+                    print(np.shape(X_train))
                     y_var = fci.random_forest_error(model, X_train, X_pred,calibrate=True)
                     y_sd = np.sqrt(np.maximum(y_var,0))
                 elif isinstance(model,MondrianForestRegressor):
                     print('Calculating mondrian forest posterior mean and standard deviation')
                     y_pred, y_sd = model.predict(X_pred,return_std=True)
-
                 Y_pred.vtk.point_arrays['Y_std'] = y_sd
                 # Print out rms of var
-                sd_rms = np.sqrt(np.mean(y_sd**2))
-                y_rms  = np.sqrt(np.mean(y_pred**2))
-                print('sd_rms/y_rms = ', 100*sd_rms/y_rms, '%')
+                sd_mean = np.mean(y_sd)
+                y_mean  = np.mean(y_pred)
+                print('sd_mean/y_mean = ', 100*sd_mean/y_mean, '%')
+
+        #    if (dist is True):
+
 
         Y_pred.pd = pd.Series(y_pred) # only need as numpy ndarray but convert to pd series for consistency 
         Y_pred.vtk.point_arrays['Y_pred'] = y_pred
