@@ -207,8 +207,13 @@ def SHAP_inter_grid(shap_inter_values,feature_names):
     plt.xticks(range(tmp2.shape[0]), feature_names[inds], rotation=50.4, horizontalalignment="left")
     plt.gca().xaxis.tick_top()
 
-def SHAP_force(clf,data,point,type='bar',index=None): 
+def SHAP_force(clf,data,point,plottype='bar',index=None,plot_features=None,names=None): 
     import shap
+
+    if "Regressor" in str(type(clf)):
+        regression = True
+    else:
+        regression = False
 
     print('\n SHAP force plot')
 
@@ -237,26 +242,80 @@ def SHAP_force(clf,data,point,type='bar',index=None):
 
     clf.verbose = True
 
-    if(type=='force'):
-        shap.force_plot(explainer.expected_value[1], shap_value[1], datapoint,matplotlib=True,text_rotation=45,show=False) #indexed with 1 as plotting for true values (replace with 0 for false)
-    elif(type=='bar'):
-        fs = 18
-        import matplotlib 
-        matplotlib.rc('xtick', labelsize=20) 
-        matplotlib.rc('ytick', labelsize=20)
-        sort_ind = np.argsort(shap_value[1])[::-1]
-        y_pos = np.arange(np.size(shap_value[1]))
-        plt.figure()
-        plt.barh(y_pos,shap_value[1][sort_ind],align='center')
+    if not regression:
+        shap_value = shap_value[1]
+        explainer.expected_value = explainer.expected_value[1]
         yprob = clf.predict_proba(datapoint.to_numpy().reshape(1,-1))[0,1]
-        plt.title('Classifier probability = %.2f' %(yprob),fontsize=fs)
-        ax = plt.gca()
-        # Set ytick labels
-        feature_names = X.columns[sort_ind]
-        yticklabel = ['%s = %.2f' %(feature,datapoint[feature]) for feature in feature_names]
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(yticklabel,fontsize=fs)
-        ax.set_xlabel('SHAP value',fontsize=fs)
+    else:
+        ypred = clf.predict(datapoint.to_numpy().reshape(1,-1))
+
+    if plot_features is not None:
+        cols = np.argwhere(X.columns.isin(plot_features)).ravel()
+        X = X[plot_features]
+        shap_value = shap_value[cols]
+        names = np.asarray(names) #can't index list of strings with list so convert
+
+    if(plottype=='force'):
+        shap.force_plot(explainer.expected_value, shap_value, datapoint,matplotlib=True,text_rotation=45,show=False) #indexed with 1 as plotting for true values (replace with 0 for false)
+    elif(plottype=='bar'):
+        fs = 18
+        y_pos = np.arange(np.size(shap_value))
+        sort_ind = np.argsort(shap_value)[::-1]
+
+#        # Old bar plot
+#        import matplotlib 
+#        matplotlib.rc('xtick', labelsize=20) 
+#        matplotlib.rc('ytick', labelsize=20)
+#        plt.figure()
+#        plt.barh(y_pos,shap_value[sort_ind],align='center')
+
+        # New bar plot
+        fig, ax = plt.subplots(figsize=(8,5))
+        x = shap_value[sort_ind]
+        y = np.arange(1,len(x)+1)
+        feature_keys = X.columns[sort_ind]
+        feature_names = names[sort_ind]
+        data = [datapoint[feature] for feature in feature_keys]  #TODO - yuck, rewrite this hack
+        yticklabel = ['%s = %.2g' %(feature_names[i],data[i]) for i in range(len(data))]
+
+        from matplotlib import cm
+#        from matplotlib import rcParams
+#        rcParams.update({'font.size': fs})
+
+        cmap = cm.coolwarm
+#        colors = [ cmap(xi) for xi in (x+1)/2 ]
+        xmax = 0.3
+        xmin = -0.3
+        colors = [ cmap(xi) for xi in (x-xmin)/(xmax-xmin) ]
+        ax.hlines(y=y,xmin=0,xmax=x, color=colors, alpha=0.5, linewidth=12)
+        ax.scatter(x,y,s=14**2,marker='o',c=colors,vmin=xmin,vmax=xmax,alpha=0.9)
+
+
+        # Title
+        if regression:
+            plt.title('$f(\mathbf{x}) = \mathbb{E}(f(\mathbf{X})) + \sum \phi_i = %.2f %+.2f = %.2f$' %(explainer.expected_value,np.sum(shap_value),ypred),fontsize=fs)
+        else:
+            plt.title('Classifier probability = %.2f' %(yprob),fontsize=fs)
+
+        ax.set_xlabel('$\phi_i$', fontweight='black', color = '#333F4B')
+        ax.set_ylabel('')
+        ax.tick_params(axis='y', which='both',length=0)
+        plt.yticks(y, yticklabel)
+        ax.set_yticks(np.append(y-0.5,np.max(y)+0.5), minor=True)
+        ax.grid(axis='y',color='#333F4B', alpha=0.4,linestyle='-',which='minor',linewidth=1.5)
+        ax.spines['top'].set_color('none')
+        ax.spines['right'].set_color('none')
+        ax.spines['left'].set_smart_bounds(True)
+        #ax.spines['bottom'].set_smart_bounds(True)
+        ax.spines['bottom'].set_position(('axes', -0.04)) 
+        ax.spines['left'].set_position(('axes', 0.015))
+        ax.vlines(0,0.5,np.max(y)+0.5,color='#333F4B', alpha=0.4,linestyle='--',linewidth=1.5)
+
+#        # Set ytick labels
+#        ax = plt.gca()
+#        ax.set_yticks(y_pos)
+#        ax.set_yticklabels(yticklabel,fontsize=fs)
+#        ax.set_xlabel('$S_i$',fontsize=fs)
 
 
 def viz_tree(clf,Xdata,Ydata,label,outfile,point=None):

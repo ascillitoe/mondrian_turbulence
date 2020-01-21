@@ -388,3 +388,27 @@ def RFE_perm(model,X,y,feats,cv=5,scoring='neg_mean_absolute_error',timing=False
         return [nfeats,scores], bestscore, bestfeat, featsets
 
 
+def mahalanobis(x=None, data=None, cov=None,norm=True):
+    from scipy.linalg import pinv
+
+    """Compute the Mahalanobis Distance between each row of x and the data  
+    x    : vector or matrix of data with, say, p columns.
+    data : ndarray of the distribution from which Mahalanobis distance of each observation of x is to be computed.
+    cov  : covariance matrix (p x p) of the distribution. If None, will be computed from data.
+    """
+    x_minus_mu = x - np.mean(data)
+    if not cov:
+        cov = np.cov(data.values.T)
+    inv_covmat = pinv(cov)
+    left_term = np.dot(x_minus_mu, inv_covmat)
+    mahal = np.dot(left_term, x_minus_mu.T)
+    dist =  mahal.diagonal()
+    if norm:
+        npts = np.shape(x)[0]
+        distnorm = np.empty(npts)
+        for i in range(npts):
+            count = (dist>dist[i]).sum()
+            gamma = float(count)/float(npts)
+            distnorm[i] = 1-gamma
+        dist = distnorm
+    return dist

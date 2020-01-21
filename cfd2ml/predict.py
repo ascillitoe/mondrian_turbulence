@@ -23,7 +23,8 @@ def predict(json):
     datloc = json['data_location']
     cases  = json['data_cases']
     savloc = json['save_location']
-
+    dist = False
+    uq = False
     os.makedirs(savloc, exist_ok=True)
 
     compare_predict = False
@@ -47,10 +48,14 @@ def predict(json):
         if(features_to_drop and features_to_keep): quit('features_to_drop and features_to_keep both set')
 
     if(("uq" in json)==True):
-        uq = True
-        import forestci as fci
-    else:
-        uq = False
+        if json["uq"] == True:
+            uq = True
+            import forestci as fci
+
+    if(("dist" in json)==True):
+        if json["dist"] == True:
+            dist = True
+            from cfd2ml.utilities import mahalanobis
 
     # Read in ML model
 #    filename = modelname + '.joblib'
@@ -60,7 +65,7 @@ def predict(json):
     model = pickle.load(open(filename, 'rb'))
     if isinstance(model,MondrianForestRegressor) or (isinstance(model,RandomForestRegressor) and uq is True): #training data needed in these instances
         X_train = pd.read_csv(modelname + '_Xdat.csv')
-        Y_train = pd.read_csv(modelname + '_Ydat.csv')
+        Y_train = pd.read_csv(modelname + '_Ydat.csv')[target]
         if (features_to_drop is not None): 
             X_train = X_train.drop(columns=features_to_drop)
         elif (features_to_keep is not None):
@@ -106,7 +111,6 @@ def predict(json):
             if(uq is True):
                 if isinstance(model,RandomForestRegressor):
                     print('Calculating infinitesimal jackknife variance')
-                    print(np.shape(X_train))
                     y_var = fci.random_forest_error(model, X_train, X_pred,calibrate=True)
                     y_sd = np.sqrt(np.maximum(y_var,0))
                 elif isinstance(model,MondrianForestRegressor):
@@ -118,8 +122,10 @@ def predict(json):
                 y_mean  = np.mean(y_pred)
                 print('sd_mean/y_mean = ', 100*sd_mean/y_mean, '%')
 
-        #    if (dist is True):
-
+            if (dist is True):
+                mah_dist = mahalanobis(x=X_pred,data=X_train)  
+                Y_pred.vtk.point_arrays['mah_dist'] = mah_dist
+                print('Mean mahalanobis distance = ', np.mean(mah_dist))
 
         Y_pred.pd = pd.Series(y_pred) # only need as numpy ndarray but convert to pd series for consistency 
         Y_pred.vtk.point_arrays['Y_pred'] = y_pred
