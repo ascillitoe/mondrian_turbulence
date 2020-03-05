@@ -827,6 +827,28 @@ def rans_les_uiuj_err(rans_vtk,les_vtk, thrsh,Ls=1,Us=1):
     tke = rans_dsa.PointData['k'] 
     uiuj_rans = (2.0/3.0)*tke*delij - 2.0*nu_t*Sij
 
+    # Find Caniso from linear EVM 
+    aij  = copy.deepcopy(Sij)*0.0
+    for i in range(0,3):
+        for j in range(0,3):
+            aij[:,i,j] = uiuj_rans[:,i,j]/(2.0*tke+small) - delij[:,i,j]/3.0
+    
+    # Get eigenvalues of aij
+    eig = algs.eigenvalue(aij)
+    eig1 = eig[:,0]
+    eig2 = eig[:,1]
+    eig3 = eig[:,2]
+    
+    # Get coords on barycentric triangle from eigenvalues
+    xc = [1.0, 0.0, 0.5] #x,y coords of corner of triangle
+    yc = [0.0, 0.0, np.cos(np.pi/6.0)]
+    C1c = eig1 - eig2
+    C2c = 2*(eig2-eig3)
+    C3c = 3*eig3 + 1
+    Caniso = 1.0 - C3c
+
+    rans_vtk.point_arrays['Caniso'] = Caniso 
+
     ###############
     # Get LES uiuj
     ###############
@@ -937,8 +959,8 @@ def make_features_inv(rans_vtk,Ls=1,Us=1,ros=1,nondim='local'):
         eps = w*tke
         Sij_h = Sij / w
     
-        # Non-dim Oij by eps/k
-        Oij_h = Oij / w
+        # Non-dim Oij by Onorm
+        Oij_h = Oij / Onorm
     
         # Non-dim pressure gradient
         ro = rans_dsa.PointData['ro']
