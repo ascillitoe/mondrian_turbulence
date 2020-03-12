@@ -18,3 +18,6 @@ Instructions and examples coming soon!
 * `forestci`: For calculating infinitesimal jackknife uncertainty estimates for random forests - https://github.com/scikit-learn-contrib/forest-confidence-interval
 * `shap`: For calculating SHAP values - https://github.com/ascillitoe/shap (forked from https://github.com/slundberg/shap)
 * `eli5`: For calculating permutation importance - https://github.com/TeamHG-Memex/eli5
+
+### Acknowledgments
+This work was supported by wave 1 of The UKRI Strategic Priorities Fund under the EPSRC grant EP/T001569/1, particularly the [Digital Twins in Aeronautics](https://www.turing.ac.uk/research/research-projects/digital-twins-aeronautics) theme within that grant, and [The Alan Turing Institute](https://www.turing.ac.uk).
