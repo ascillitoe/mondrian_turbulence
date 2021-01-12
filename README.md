@@ -2,7 +2,15 @@
 
 This python package trains random forests and Mondrian forests on high fidelity LES/DNS data. The trained models can then be used to predict turbulence parameters for a new RANS flowfield. For more details see:
 
-Scillitoe, Ashley, et al. ‘Uncertainty Quantification for Data-Driven Turbulence Modelling with Mondrian Forests’. ArXiv:2003.01968 [Physics], Mar. 2020. arXiv.org, http://arxiv.org/abs/2003.01968.
+Ashley Scillitoe, Pranay Seshadri, Mark Girolami,
+*Uncertainty quantification for data-driven turbulence modelling with mondrian forests*,
+Journal of Computational Physics,
+2021,
+110116,
+ISSN 0021-9991,
+https://doi.org/10.1016/j.jcp.2021.110116.
+
+Also avaiable at: http://arxiv.org/abs/2003.01968.
 
 ### How to use
 Instructions and examples coming soon!
