@@ -8,9 +8,8 @@ Journal of Computational Physics,
 2021,
 110116,
 ISSN 0021-9991,
-https://doi.org/10.1016/j.jcp.2021.110116.
-
-Also avaiable at: http://arxiv.org/abs/2003.01968.
+https://doi.org/10.1016/j.jcp.2021.110116. 
+arXiv: [2003.01968](http://arxiv.org/abs/2003.01968).
 
 ### How to use
 Instructions and examples coming soon!
